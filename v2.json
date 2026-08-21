@@ -1,0 +1,5095 @@
+{
+    "schemes": ["https"],
+    "consumes": [
+        "application/json"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "Efflux Scan API",
+        "title": "Efflux Scan API",
+        "contact": {
+            "name": "Efflux",
+            "url": "http://www.efflux.io",
+            "email": "data@effluxio.com"
+        },
+        "version": "2.0"
+    },
+    "host": "api.effluxio.com",
+    "basePath": "/api/v2",
+    "paths": {
+        "/info/cve/{cve_id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get CVE info by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CVE ID",
+                        "name": "cve_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CVE Found",
+                        "schema": {
+                            "$ref": "#/definitions/CveInfo"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "CVE Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/info/ports/tcp/{count}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "summary": "Get top_# TCP port lists",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "top port count",
+                        "name": "count",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "return ports in order (unjoined)",
+                        "name": "ordered",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Top Ports list found",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid count specified",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/info/ports/udp/{count}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "summary": "Get top_# UDP port lists",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "top port count",
+                        "name": "count",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "return ports in order (unjoined)",
+                        "name": "ordered",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Top Ports list found",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid count specified",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/info/usage": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "summary": "Get user usage by month (default) or day for up to 12 months (default 6 months)",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "shows usage by day (sets months=1, user can override)",
+                        "name": "by_day",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "months of history",
+                        "name": "months",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "get usage for entire org (if sharing is enabled)",
+                        "name": "org",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Got Usage",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/UsageByDate"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "No Usage found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/lists/hosts": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "summary": "Get Host Lists",
+                "responses": {
+                    "200": {
+                        "description": "Found Host Lists",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/HostList"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "No Host Lists found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Created lists can be used in scans, schedules, and other host lists\n\nFor example, with the following two lists created\n{\"name\":\"my_list_1\",\"description\":\"some hosts\",\"hosts\":[\"1.2.3.4\",\"2.3.4.5\"],\"host_count\":2}\n{\"name\":\"my_list_2\",\"description\":\"some other hosts\",\"hosts\":[\"3.4.5.6\",\"4.5.6.7\"],\"host_count\":2}\n\nYou can create a new list by referring to those lists by name.\n\n'{\"name\":\"my_full_list\",\"description\":\"all my ssh hosts\",\"hosts\":[\"my_list_1\", \"my_list_2\"]}'\n\nResult:\n{\"name\":\"my_full_list\",\"description\":\"all my ssh hosts\",\"hosts\":[\"1.2.3.4\",\"2.3.4.5\",\"3.4.5.6\",\"4.5.6.7\"],\"host_count\":4}\n\nLinks to the source lists are not maintained, so any later changes to the two source lists will not reflect in my_full_list.\nYou can update my_full_list after altering the 'my_list_1' and 'my_list_2' lists to reflect those changes\n\nWhen a list is used in a Schedule, any updates to the list will be reflected in the schedule\n\nRESTRICTIONS: \tValid characters are: [a-zA-Z0-9_] host lists cannot contain hyphens, spaces will be replaced with underscore(_)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Create a new Host List",
+                "parameters": [
+                    {
+                        "description": "Host List details",
+                        "name": "host_list",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/NewHostList"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List created",
+                        "schema": {
+                            "$ref": "#/definitions/HostList"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid message body",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "409": {
+                        "description": "List already exists",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to Create"
+                    }
+                }
+            }
+        },
+        "/lists/hosts/{list_id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "summary": "Get Host Lists by name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "List ID",
+                        "name": "list_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Host List Found",
+                        "schema": {
+                            "$ref": "#/definitions/HostList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "List Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Update a Host List",
+                "parameters": [
+                    {
+                        "description": "Host List details to change",
+                        "name": "host_list",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/NewHostList"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "List ID",
+                        "name": "list_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Host List Updated",
+                        "schema": {
+                            "$ref": "#/definitions/HostList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "List Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "summary": "Delete a Host List",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "List ID",
+                        "name": "list_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "List deleted",
+                        "schema": {
+                            "$ref": "#/definitions/HostList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "List not found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/lists/ports": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "summary": "Get Port Lists",
+                "responses": {
+                    "200": {
+                        "description": "Found Port Lists",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/PortList"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "No Port Lists found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Created lists can be used in scans, schedules, and other port lists\n\nFor example, with the following two lists created\n{\"name\":\"ssh_basic_list\",\"description\":\"common ssh ports\",\"ports\":\"22,222,2222\",\"port_count\":3}\n{\"name\":\"ssh_alt_list\",\"description\":\"extra ssh ports\",\"ports\":\"223,2223,2323,22223\",\"port_count\":4}\n\nYou can create a new list by referring to those lists by name.\n\n'{\"name\":\"ssh_full_list\",\"description\":\"all my ssh ports\",\"ports\":[\"ssh_basic_list\", \"ssh_alt_list\"]}'\n\nResult:\n{\"name\":\"ssh_full_list\",\"description\":\"all my ssh ports\",\"ports\":\"22,222-223,2222-2223,2323,22223\",\"port_count\":7}\n\nLinks to the source lists are not maintained, so any later changes to the two source lists will not reflect in ssh_full_list.\nYou can update ssh_full_list after altering the 'basic' and 'alt' lists to reflect those changes\n\nWhen a list is used in a Schedule, any updates to the list will be reflected in the schedule\n\nRESTRICTIONS: \tValid characters are: [a-zA-Z0-9_] port lists cannot  or begin with 'top_' to avoid interfering with top_# lists.\nNo hyphens, spaces will be replaced with underscore(_)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Create a new Port List",
+                "parameters": [
+                    {
+                        "description": "Port List details",
+                        "name": "port_list",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/NewPortList"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List created",
+                        "schema": {
+                            "$ref": "#/definitions/PortList"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid message body",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "409": {
+                        "description": "List already exists",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to Create"
+                    }
+                }
+            }
+        },
+        "/lists/ports/{list_id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "summary": "Get Port Lists by id",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "List ID",
+                        "name": "list_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Port List Found",
+                        "schema": {
+                            "$ref": "#/definitions/PortList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "List Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Update a Port List",
+                "parameters": [
+                    {
+                        "description": "Port List details including name",
+                        "name": "port_list",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/NewPortList"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "List ID",
+                        "name": "list_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Port List Updated",
+                        "schema": {
+                            "$ref": "#/definitions/PortList"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "List Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "summary": "Delete a Port List",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "List ID",
+                        "name": "list_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "List deleted"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "List not found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/scans": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "summary": "Get user scans",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "count to return, default 10",
+                        "name": "count",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Found Jobs",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Job"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "No Jobs found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "define the parameters of your scan\n\n\u003cb\u003ehosts:\u003c/b\u003e\n- \"1.2.3.4/32\" \t\t\t\t\t\t\t\t\t\t\tsingle (also ok without '/32')\n- \"1.2.4.1/24\" \t\t\t\t\t\t\t\t\t\t\tblock\n- \"1.2.5.1-1.2.5.19\"\trange\n- \"my_custom_list\"\t\t\t\t\t\tcustom user list\n\n\u003cb\u003eports:\u003c/b\u003e\n- \"443\"\n- \"20-22\"\t\t\t\t\t\t\t\t\t\t\t\trange\n- \"top_10\"\t\t\t\t\t\t\t\t\t\t\ttop_# use any number up to 10,000\n- \"my_custom_list\"\tcustom user list\n\n\u003cb\u003efingerprint:\u003c/b\u003e\n- 0/omitted\t\t\t\t\tJust check if open - no fingerprinting attempts (fastest)\n- 1\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tEvaluate any banners sent upon connection\n- 2\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tSend probes to identify service if needed (possible multiple connections, slowest)\n\nSetting fingerprint to 1 or 2 \u003cb\u003edoubles the request count of the job (hosts * ports * 2)\u003c/b\u003e\n\n\u003cb\u003echecks:\u003c/b\u003e\n- true\n- false (default)\n\nEnabling our Checks system may extend the length of your jobs by multiple minutes, depending on what services or software are found, and what vulnerabilities exist for them.\n\n\u003cb\u003eproto:\u003c/b\u003e\n- \"tcp\" (default)\n- \"udp\"\n\n\u003cb\u003ecollect:\u003c/b\u003e\n- \"collect:{\"ssh\":[\"222\",\"my_custom_ssh_port_list\"],\"rdp\":[\"33389\",\"my_custom_rdp_port_list\"]}\n- collect bypasses fingerprinting, assumes any open port 222 is SSH, and attempts to collect\n\n\u003cb\u003edomains\u003c/b\u003e\ncurrently limited to 20 per job\ndomains can be provided with hosts/ports, paths, urls, and cves\n\u003cu\u003e*adding paths or cves to your request means domains provided will not get whois/dns lookups as normal, just used for checks operations*\u003c/u\u003e\n- \"somedomain.tld\"\n- \"www.somedomain.tld\"\n- \"some.subdomain.somedomain.tld\"\n\n\u003cb\u003epaths\u003c/b\u003e\ncurrently limited to 5 per job\nprovided paths are appended to all host:port combinations, and domains, then used for http collection\n\u003cu\u003e*adding paths to your request means you cannot include cves*\u003c/u\u003e\n\u003cu\u003e*adding paths to your request means host/ports provided will not be scanned normally, just used for http collection*\u003c/u\u003e\n\u003cu\u003e*adding paths to your request means domains provided will not get whois/dns lookups as normal, just used for http collection*\u003c/u\u003e\n- \"/example/path\"\n- \"/admin/login.php\"\n- \"/something/here.html\"\n\n\u003cb\u003eurls\u003c/b\u003e\ncurrently limited to 20 per job\ncan be provided with hosts/ports, domains, and paths\n\u003cu\u003e*adding urls to your request means you cannot include cves*\u003c/u\u003e\n- \"somedomain.tld/this/path\"\n- \"www.somedomain.tld/other/path.php\"\n- \"https://test.somedomain.tld/something/else/here\"\n- \"some.subdomain.somedomain.tld/something/else/here\"\n\n\u003cb\u003ecves\u003c/b\u003e\ncurrently limited to 5 per job\ncan be provided with hosts+ports, domains\n\u003cu\u003e*adding cves to your request means you cannot include urls or paths*\u003c/u\u003e\n\u003cu\u003e*adding cves to your request means host:ports provided will not be scanned normally, just used as targets for checks operations*\u003c/u\u003e\n\u003cu\u003e*adding cves to your request means domains provided will not get whois/dns lookups as normal, just used for checks operations*\u003c/u\u003e\n- \"cve-2024-1234\"\n- \"CVE-2024-1235\"\n\n\n\u003cb\u003ecallback:\u003c/b\u003e\nstart_url: \"mydomain.tld/hit/this/address/when/starting/$job_id\" ('$job_id' (or $JOB_ID) will be replaced by your job_id)\nstart_method: HTTP method to use POST(default) | GET - Post will post the job result data\n- \"POST\" (default)\n- \"GET\"\n\nsuccess_url: \"mydomain.tld/hit/this/address/when/complete/$job_id\" ('$job_id' (or $JOB_ID) will be replaced by your job_id)\nsuccess_method: HTTP method to use POST(default) | GET - Post will post the job result data\n- \"POST\" (default)\n- \"GET\"\n\nfail_url: \"mydomain.tld/hit/this/address/upon/failure/$job_id\" (not yet implemented)\nfail_method: HTTP method to use\n- \"POST\" (default)\n- \"GET\"\n\nemail: we will email your account email address\n- true\n- false (default)\nsummary_only: we will omit the results (useful if your webhook has a payload size limit)\n- true\n- false (default)\n\nWe will populate the 'efflux-job-id' header with the job_id when we perform the callback\n",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Request a scan",
+                "parameters": [
+                    {
+                        "description": "Hosts and Ports to be scanned",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job created",
+                        "schema": {
+                            "$ref": "#/definitions/RequestResults"
+                        }
+                    },
+                    "400": {
+                        "description": "No valid ports",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to create Job"
+                    }
+                }
+            }
+        },
+        "/scans/eval": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "summary": "Have a scan request be evaluated without executing",
+                "parameters": [
+                    {
+                        "description": "Hosts and Ports to be scanned",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job evaluated",
+                        "schema": {
+                            "$ref": "#/definitions/RequestResults"
+                        }
+                    },
+                    "400": {
+                        "description": "No valid ports",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to Create"
+                    }
+                }
+            }
+        },
+        "/scans/repeat/{job_id}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Request a job be repeated",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job created",
+                        "schema": {
+                            "$ref": "#/definitions/RequestResults"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to Create"
+                    }
+                }
+            }
+        },
+        "/scans/{job_id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get job results by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "include hosts, ports, and returned byte data",
+                        "name": "details",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job Found",
+                        "schema": {
+                            "$ref": "#/definitions/JobReport"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Job Not Found"
+                    }
+                }
+            }
+        },
+        "/scans/{job_id}/plan": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get job results by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Plan Found",
+                        "schema": {
+                            "$ref": "#/definitions/Plan"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Plan Not Found"
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Run Checks Plan by ID",
+                "parameters": [
+                    {
+                        "description": "Options for Plan execution",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PlanExecOptions"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Job created",
+                        "schema": {
+                            "$ref": "#/definitions/RequestResults"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Plan Not Found"
+                    }
+                }
+            }
+        },
+        "/scans/{job_id}/plan/eval": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Run Checks Plan by ID",
+                "parameters": [
+                    {
+                        "description": "Options for Plan execution",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/PlanExecOptions"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Plan tailored to provided options",
+                        "schema": {
+                            "$ref": "#/definitions/Plan"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Plan Not Found"
+                    }
+                }
+            }
+        },
+        "/scans/{job_id}/subscribe": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get job results by ID with a 120 second long-poll",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "job_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "include hosts, ports, and returned byte data",
+                        "name": "details",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "seconds before subscription timeout (60-120)",
+                        "name": "timeout",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job Found",
+                        "schema": {
+                            "$ref": "#/definitions/JobReport"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Job Not Found"
+                    }
+                }
+            }
+        },
+        "/schedules": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "summary": "Get user schedules",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "count to return, default 10",
+                        "name": "count",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Schedules Found",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Schedule"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Schedules Not Found"
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "define how often and when you want your scan to occur\n\n\u003cb\u003efrequency:\u003c/b\u003e\n'5m', '10m', '2h', '1d', '1w'\nvalid intervals:\n'm'(minute), 'h'(hour), 'd'(day)', 'w'(week)\noptions:\nif interval = m (5,10,15,20,30)\nif interval = h (1,2,3,4,6,8,12)\nif interval = d/w (1)\n\n\u003cb\u003eday:\u003c/b\u003e\nonly if interval = w, (0[Sunday]-6[Saturday]) default 0\n\n\u003cb\u003ehour:\u003c/b\u003e\nonly if interval = d/w, (0-23) default 0 all times GMT/UCT/ZULU\n\n\u003cb\u003ehosts:\u003c/b\u003e\nsame as scan request (custom lists supported)\n\n\u003cb\u003eports:\u003c/b\u003e\nsame as scan request (top_# lists and custom lists supported)\n\n\u003cb\u003eproto:\u003c/b\u003e\n\"tcp\"(default) or \"udp\"\n\nas with scans, request count = host count * port count\nmax request counts depend on the frequency:\n\"m\": 1,000 per minute interval in the frequency (5m = 5,000)\n\"h\": 100,000 per hour interval in the frequency (2h = 200,000)\n\"d\": 1,000,000 per day\n\"w\": 10,000,000 per week\n\n\u003cb\u003ecallback:\u003c/b\u003e\nsuccess_url: \"mydomain.tld/hit/this/address/when/complete/$job_id\" ('$job_id' (or $JOB_ID) will be replaced by your job_id)\nsuccess_method: HTTP method to use POST(default) | GET - Post will post the job result data\n- \"POST\" (default)\n- \"GET\"\nemail: we will email your account email address\n- true\n- false (default)\nsummary_only: we will omit the results (useful if your webhook has a payload size limit)\n- true\n- false (default)\n\n\u003cb\u003eExamples:\u003c/b\u003e\n'{\"frequency\":30m,\"hosts\":\"1.2.3.4/28\",\"ports\":\"top_1000\"}'\n'{\"frequency\":1h,\"hosts\":\"1.2.3.4/23\",\"ports\":\"top_100\"}'\n'{\"frequency\":6h,\"hosts\":\"1.2.3.4/21\",\"ports\":\"top_1000\"}'\n'{\"frequency\":1d,\"hour\":16,\"hosts\":\"1.2.3.4/16\",\"ports\":\"top_1000\"}'\n'{\"frequency\":1w,\"day\":2,\"hour\":12,\"hosts\":\"1.2.3.4/16\",\"ports\":\"top_1000\"}'",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Create a new schedule",
+                "parameters": [
+                    {
+                        "description": "Schedule Info",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/NewSchedule"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Schedule Created",
+                        "schema": {
+                            "$ref": "#/definitions/Schedule"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to Create"
+                    }
+                }
+            }
+        },
+        "/schedules/addlists/{schedule_id}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Add the listed Host or Port Lists to the schedule",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Add Host Lists or Port Lists to a schedule",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Schedule ID",
+                        "name": "schedule_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Schedule Info",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/NewSchedule"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Schedule Modified",
+                        "schema": {
+                            "$ref": "#/definitions/Schedule"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to Modify"
+                    }
+                }
+            }
+        },
+        "/schedules/history/{schedule_id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "summary": "Get past jobs of a schedule",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "schedule id",
+                        "name": "schedule_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "count to return, default 10",
+                        "name": "count",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Jobs found",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Job"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "jobs not found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/schedules/removelists/{schedule_id}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Remove the provided Host Lists and/or Port Lists from the schedule",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Remove Host or Port Lists to a schedule",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Schedule ID",
+                        "name": "schedule_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Schedule Info",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/NewSchedule"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Schedule Modified",
+                        "schema": {
+                            "$ref": "#/definitions/Schedule"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to Modify"
+                    }
+                }
+            }
+        },
+        "/schedules/{schedule_id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get schedules by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Schedule ID",
+                        "name": "schedule_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Schedule Found",
+                        "schema": {
+                            "$ref": "#/definitions/Schedule"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Schedule Not Found"
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Add the listed Host or Port Lists to the schedule",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Add Host Lists or Port Lists to a schedule",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Schedule ID",
+                        "name": "schedule_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Schedule Info",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/NewSchedule"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Schedule Modified",
+                        "schema": {
+                            "$ref": "#/definitions/Schedule"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to Modify"
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "summary": "Delete a Schedule",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Schedule ID",
+                        "name": "schedule_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Schedule Deleted"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "List not found",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/search/domain/{domain}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get results by domain",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "search domain",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Domain Found",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/DomainStatusExtended"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Domain Not Found"
+                    }
+                }
+            }
+        },
+        "/search/{host}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Get scan results by IP",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "search host",
+                        "name": "host",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Host Found",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/PortStatusExtended"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Host Not Found"
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "AppDetectURLSet": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "detections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/AppDetection"
+                    },
+                    "x-order": "01"
+                }
+            }
+        },
+        "AppDetection": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "matches": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "version": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "url": {
+                    "type": "string",
+                    "x-order": "03"
+                }
+            }
+        },
+        "BACnetCollector": {
+            "type": "object",
+            "properties": {
+                "instance_number": {
+                    "type": "integer",
+                    "x-order": "00"
+                },
+                "vendor_id": {
+                    "type": "integer",
+                    "x-order": "01"
+                },
+                "vendor_name": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "firmware_revision": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "software_revision": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "object_name": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "model_name": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "location": {
+                    "type": "string",
+                    "x-order": "08"
+                }
+            }
+        },
+        "Certificate": {
+            "type": "object",
+            "properties": {
+                "is_ca": {
+                    "type": "boolean",
+                    "x-order": "00"
+                },
+                "is_ev": {
+                    "type": "boolean",
+                    "x-order": "01"
+                },
+                "ocsp_servers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "ocsp_staple": {
+                    "type": "boolean",
+                    "x-order": "03"
+                },
+                "ocsp_response": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "chain_valid": {
+                    "type": "boolean",
+                    "x-order": "05"
+                },
+                "signed_certificate_timestamp_count": {
+                    "type": "integer",
+                    "x-order": "06"
+                },
+                "subject": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "common_name": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "serial_number": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "sha1_fingerprint": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "sha256_fingerprint": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "public_key": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "public_key_algorithm": {
+                    "type": "string",
+                    "x-order": "13"
+                },
+                "public_key_size": {
+                    "type": "integer",
+                    "x-order": "14"
+                },
+                "not_before": {
+                    "type": "string",
+                    "x-order": "15"
+                },
+                "not_after": {
+                    "type": "string",
+                    "x-order": "16"
+                },
+                "signature_algorithm": {
+                    "type": "string",
+                    "x-order": "17"
+                },
+                "dns_names": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "18"
+                },
+                "issuer": {
+                    "type": "string",
+                    "x-order": "19"
+                }
+            }
+        },
+        "CheckCounts": {
+            "type": "object",
+            "properties": {
+                "all": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "00"
+                },
+                "all_cve": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "01"
+                },
+                "info": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "02"
+                },
+                "low": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "03"
+                },
+                "low_cve": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "04"
+                },
+                "medium": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "05"
+                },
+                "medium_cve": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "06"
+                },
+                "high": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "07"
+                },
+                "high_cve": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "08"
+                },
+                "critical": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "09"
+                },
+                "critical_cve": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanCounts"
+                        }
+                    ],
+                    "x-order": "10"
+                }
+            }
+        },
+        "CheckInfo": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "name": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "severity": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "is_cve": {
+                    "type": "boolean",
+                    "x-order": "03"
+                },
+                "cvss_score": {
+                    "type": "number",
+                    "x-order": "04"
+                },
+                "epss_score": {
+                    "type": "number",
+                    "x-order": "05"
+                },
+                "cpe": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "target_count": {
+                    "type": "integer",
+                    "x-order": "07"
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "08"
+                }
+            }
+        },
+        "CheckResult": {
+            "type": "object",
+            "properties": {
+                "matched": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "check_name": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "references": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "check_type": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "severity": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "extract_name": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "extractions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                },
+                "cve_id": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "08"
+                },
+                "cwe_id": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "09"
+                },
+                "cvss_metrics": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "cvss_score": {
+                    "type": "number",
+                    "x-order": "11"
+                },
+                "epss_score": {
+                    "type": "number",
+                    "x-order": "12"
+                },
+                "cpe": {
+                    "type": "string",
+                    "x-order": "13"
+                },
+                "interaction_request": {
+                    "type": "string",
+                    "x-order": "14"
+                },
+                "interaction_addr": {
+                    "type": "string",
+                    "x-order": "15"
+                },
+                "interaction_proto": {
+                    "type": "string",
+                    "x-order": "16"
+                },
+                "interaction_timestamp": {
+                    "type": "string",
+                    "x-order": "17"
+                }
+            }
+        },
+        "Cipher": {
+            "type": "object",
+            "properties": {
+                "tls_version": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "ciphers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "01"
+                }
+            }
+        },
+        "CveInfo": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "name": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "severity": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "cvss_score": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "check_available": {
+                    "type": "boolean",
+                    "x-order": "05"
+                },
+                "rule_triggers": {
+                    "type": "integer",
+                    "x-order": "06"
+                }
+            }
+        },
+        "DNSResult": {
+            "type": "object",
+            "properties": {
+                "resolver": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "a": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "01"
+                },
+                "aaaa": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "cname": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "dmarc": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "04"
+                },
+                "mx": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "05"
+                },
+                "spf": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "txt": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                }
+            }
+        },
+        "DomainMetadata": {
+            "type": "object",
+            "properties": {
+                "rank": {
+                    "type": "integer",
+                    "x-order": "00"
+                },
+                "info": {
+                    "type": "string",
+                    "x-order": "01"
+                }
+            }
+        },
+        "DomainStatus": {
+            "type": "object",
+            "properties": {
+                "whois": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/WhoisResult"
+                        }
+                    ],
+                    "x-order": "00"
+                },
+                "dns": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/DNSResult"
+                        }
+                    ],
+                    "x-order": "01"
+                },
+                "http": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/HTTPResult"
+                        }
+                    ],
+                    "x-order": "02"
+                },
+                "tls": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/TLSResult"
+                        }
+                    ],
+                    "x-order": "03"
+                }
+            }
+        },
+        "DomainStatusExtended": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "subdomain": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "checked_at": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "metadata": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/DomainMetadata"
+                        }
+                    ],
+                    "x-order": "03"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/DomainStatus"
+                        }
+                    ],
+                    "x-order": "04"
+                }
+            }
+        },
+        "FoxCollector": {
+            "type": "object",
+            "properties": {
+                "server_id": {
+                    "type": "integer",
+                    "x-order": "00"
+                },
+                "version": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "host_name": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "host_address": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "app_name": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "app_version": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "vm_name": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "vm_version": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "os_name": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "os_version": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "station_name": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "language": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "time_zone": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "host_id": {
+                    "type": "string",
+                    "x-order": "13"
+                },
+                "vm_id": {
+                    "type": "string",
+                    "x-order": "14"
+                },
+                "brand_id": {
+                    "type": "string",
+                    "x-order": "15"
+                },
+                "sys_info": {
+                    "type": "string",
+                    "x-order": "16"
+                },
+                "auth_agent_type": {
+                    "type": "string",
+                    "x-order": "17"
+                }
+            }
+        },
+        "HTTPResult": {
+            "type": "object",
+            "properties": {
+                "requested_url": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "remote_host": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "remote_port": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "supports_http2": {
+                    "type": "boolean",
+                    "x-order": "03"
+                },
+                "supports_http3": {
+                    "type": "boolean",
+                    "x-order": "04"
+                },
+                "secure_redirect": {
+                    "type": "boolean",
+                    "x-order": "05"
+                },
+                "redirect_chain": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Redirect"
+                    },
+                    "x-order": "06"
+                },
+                "security_headers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Header"
+                    },
+                    "x-order": "07"
+                },
+                "script_urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "08"
+                },
+                "other_headers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Header"
+                    },
+                    "x-order": "09"
+                }
+            }
+        },
+        "Header": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "values": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "01"
+                }
+            }
+        },
+        "HostMetadata": {
+            "type": "object",
+            "properties": {
+                "asn": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "as_org": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "country": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "provider": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "tor": {
+                    "type": "boolean",
+                    "x-order": "04"
+                },
+                "info": {
+                    "type": "string",
+                    "x-order": "05"
+                }
+            }
+        },
+        "HostStatus": {
+            "type": "object",
+            "properties": {
+                "metadata": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/HostMetadata"
+                        }
+                    ],
+                    "x-order": "00"
+                },
+                "ports": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/PortStatus"
+                    },
+                    "x-order": "01"
+                }
+            }
+        },
+        "JobReport": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "schedule_id": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "proto": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "host_lists": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "04"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "05"
+                },
+                "port_lists": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "08"
+                },
+                "urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "09"
+                },
+                "cves": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "10"
+                },
+                "host_count": {
+                    "type": "integer",
+                    "x-order": "11"
+                },
+                "port_count": {
+                    "type": "integer",
+                    "x-order": "12"
+                },
+                "domain_count": {
+                    "type": "integer",
+                    "x-order": "13"
+                },
+                "path_count": {
+                    "type": "integer",
+                    "x-order": "14"
+                },
+                "url_count": {
+                    "type": "integer",
+                    "x-order": "15"
+                },
+                "cve_count": {
+                    "type": "integer",
+                    "x-order": "16"
+                },
+                "request_count": {
+                    "type": "integer",
+                    "x-order": "17"
+                },
+                "fingerprint": {
+                    "type": "integer",
+                    "x-order": "18"
+                },
+                "checks": {
+                    "type": "boolean",
+                    "x-order": "19"
+                },
+                "created_at": {
+                    "type": "string",
+                    "x-order": "20"
+                },
+                "started_at": {
+                    "type": "string",
+                    "x-order": "21"
+                },
+                "completed_at": {
+                    "type": "string",
+                    "x-order": "22"
+                },
+                "accessible_host_count": {
+                    "type": "integer",
+                    "x-order": "23"
+                },
+                "accessible_port_count": {
+                    "type": "integer",
+                    "x-order": "24"
+                },
+                "accessible_url_count": {
+                    "type": "integer",
+                    "x-order": "25"
+                },
+                "total_connections": {
+                    "type": "integer",
+                    "x-order": "26"
+                },
+                "checks_run": {
+                    "type": "integer",
+                    "x-order": "27"
+                },
+                "checks_matched": {
+                    "type": "integer",
+                    "x-order": "28"
+                },
+                "status": {
+                    "type": "string",
+                    "x-order": "29"
+                },
+                "results": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/HostStatus"
+                    },
+                    "x-order": "30"
+                },
+                "domain_info": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/DomainStatus"
+                    },
+                    "x-order": "31"
+                },
+                "url_info": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/HTTPResult"
+                    },
+                    "x-order": "32"
+                }
+            }
+        },
+        "MSSQLCollector": {
+            "type": "object",
+            "properties": {
+                "certificate": {
+                    "$ref": "#/definitions/TLSCertificate"
+                },
+                "encryption": {
+                    "type": "string"
+                },
+                "instance": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "MongoDBCollector": {
+            "type": "object",
+            "properties": {
+                "is_master": {
+                    "type": "boolean",
+                    "x-order": "00"
+                },
+                "max_wire_version": {
+                    "type": "integer",
+                    "x-order": "01"
+                },
+                "min_wire_version": {
+                    "type": "integer",
+                    "x-order": "02"
+                },
+                "max_bson_object_size": {
+                    "type": "integer",
+                    "x-order": "03"
+                },
+                "max_write_batch_size": {
+                    "type": "integer",
+                    "x-order": "04"
+                },
+                "logical_session_timeout_minutes": {
+                    "type": "integer",
+                    "x-order": "05"
+                },
+                "max_message_size_bytes": {
+                    "type": "integer",
+                    "x-order": "06"
+                },
+                "read_only": {
+                    "type": "boolean",
+                    "x-order": "07"
+                },
+                "version": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "git_version": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "sys_info": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "loader_flags": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "compiler_flags": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "allocator": {
+                    "type": "string",
+                    "x-order": "13"
+                },
+                "debug": {
+                    "type": "boolean",
+                    "x-order": "14"
+                },
+                "bits": {
+                    "type": "integer",
+                    "x-order": "15"
+                },
+                "javascript_engine": {
+                    "type": "string",
+                    "x-order": "16"
+                },
+                "storage_engines": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "17"
+                },
+                "distmod": {
+                    "type": "string",
+                    "x-order": "18"
+                },
+                "distarch": {
+                    "type": "string",
+                    "x-order": "19"
+                },
+                "cc": {
+                    "type": "string",
+                    "x-order": "20"
+                },
+                "cc_flags": {
+                    "type": "string",
+                    "x-order": "21"
+                },
+                "cxx": {
+                    "type": "string",
+                    "x-order": "22"
+                },
+                "cxx_flags": {
+                    "type": "string",
+                    "x-order": "23"
+                },
+                "link_flags": {
+                    "type": "string",
+                    "x-order": "24"
+                },
+                "target_arch": {
+                    "type": "string",
+                    "x-order": "25"
+                },
+                "target_os": {
+                    "type": "string",
+                    "x-order": "26"
+                },
+                "databases": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "27"
+                },
+                "total_size": {
+                    "type": "integer",
+                    "x-order": "28"
+                }
+            }
+        },
+        "OracleCollector": {
+            "type": "object",
+            "properties": {
+                "accept_version": {
+                    "type": "integer",
+                    "x-order": "00"
+                },
+                "global_service_options": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "boolean"
+                    },
+                    "x-order": "01"
+                },
+                "connect_flags": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "boolean"
+                    },
+                    "x-order": "02"
+                },
+                "resend_packet": {
+                    "type": "boolean",
+                    "x-order": "03"
+                },
+                "redirect_target": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "refuse_error": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "refuse_app_reason": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "refuse_sys_rason": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "refuse_version": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "nsn_version": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "nsn_service_versions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "x-order": "10"
+                }
+            }
+        },
+        "Plan": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "check_counts": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/CheckCounts"
+                        }
+                    ],
+                    "x-order": "01"
+                },
+                "request_counts": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/RequestCounts"
+                        }
+                    ],
+                    "x-order": "02"
+                },
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "04"
+                },
+                "check_info": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/CheckInfo"
+                    },
+                    "x-order": "05"
+                }
+            }
+        },
+        "PlanCounts": {
+            "type": "object",
+            "properties": {
+                "checks": {
+                    "type": "integer",
+                    "x-order": "00"
+                },
+                "targets": {
+                    "type": "integer",
+                    "x-order": "01"
+                }
+            }
+        },
+        "PlanExecOptions": {
+            "type": "object",
+            "properties": {
+                "cves_only": {
+                    "description": "ensures only CVE checks run, as long as they meet other requirements.",
+                    "type": "boolean",
+                    "x-order": "00"
+                },
+                "min_severity": {
+                    "description": "is the lowest severity check to run. Higher severities will also be run, up to max_severity, if included.",
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "max_severity": {
+                    "description": "is the highest severity check to run. Leave blank for no max.",
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "include_ids": {
+                    "description": "includes these check IDs even if they do not meet other requirements. Overrides cves_only and severity limits, but not exclude_ids.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "exclude_ids": {
+                    "description": "excludes these check IDs even if they meet other requirements. Overrides include_ids if id is both lists.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "04"
+                },
+                "limit_to_ids": {
+                    "description": "only includes the provided check IDs, as long as they meet other requirements. Overrides include/exclude.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "05"
+                },
+                "exclude_targets": {
+                    "description": "excludes the targets from any checks run.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "limit_to_targets": {
+                    "description": "only includes checks associated with these targets, as long as they meet other requirements. Overrides exclude_targets.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                }
+            }
+        },
+        "PortStatus": {
+            "type": "object",
+            "properties": {
+                "open": {
+                    "type": "boolean",
+                    "x-order": "00"
+                },
+                "service": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "software": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "version": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "info": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "host_name": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "os": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "device_type": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "cpe": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "tls": {
+                    "type": "boolean",
+                    "x-order": "09"
+                },
+                "http": {
+                    "type": "boolean",
+                    "x-order": "10"
+                },
+                "http_info": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/HTTPResult"
+                        }
+                    ],
+                    "x-order": "11"
+                },
+                "certificate": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/TLSCertificate"
+                        }
+                    ],
+                    "x-order": "12"
+                },
+                "bacnet_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/BACnetCollector"
+                        }
+                    ],
+                    "x-order": "13"
+                },
+                "fox_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/FoxCollector"
+                        }
+                    ],
+                    "x-order": "14"
+                },
+                "mongodb_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/MongoDBCollector"
+                        }
+                    ],
+                    "x-order": "15"
+                },
+                "oracle_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/OracleCollector"
+                        }
+                    ],
+                    "x-order": "16"
+                },
+                "postgresql_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PostgreSQLCollector"
+                        }
+                    ],
+                    "x-order": "17"
+                },
+                "rdp_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/RDPCollector"
+                        }
+                    ],
+                    "x-order": "18"
+                },
+                "redis_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/RedisCollector"
+                        }
+                    ],
+                    "x-order": "19"
+                },
+                "sip_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/SIPCollector"
+                        }
+                    ],
+                    "x-order": "20"
+                },
+                "s7_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/S7Collector"
+                        }
+                    ],
+                    "x-order": "21"
+                },
+                "smb_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/SMBCollector"
+                        }
+                    ],
+                    "x-order": "22"
+                },
+                "ssh_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/SSHCollector"
+                        }
+                    ],
+                    "x-order": "23"
+                },
+                "telnet_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/TelnetCollector"
+                        }
+                    ],
+                    "x-order": "24"
+                },
+                "vnc_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/VNCCollector"
+                        }
+                    ],
+                    "x-order": "25"
+                },
+                "mssql_collection": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/MSSQLCollector"
+                        }
+                    ],
+                    "x-order": "26"
+                },
+                "app_detections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/AppDetectURLSet"
+                    },
+                    "x-order": "27"
+                },
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/CheckResult"
+                    },
+                    "x-order": "28"
+                },
+                "bytes_rcvd": {
+                    "type": "integer",
+                    "x-order": "29"
+                },
+                "raw": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "30"
+                }
+            }
+        },
+        "PortStatusExtended": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "port": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "first_seen": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "last_seen": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "host_metadata": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/HostMetadata"
+                        }
+                    ],
+                    "x-order": "04"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PortStatus"
+                        }
+                    ],
+                    "x-order": "05"
+                }
+            }
+        },
+        "PostgreSQLCollector": {
+            "type": "object",
+            "properties": {
+                "supported_versions": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "protocol_error": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "x-order": "01"
+                },
+                "startup_error": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "user_startup_error": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "is_ssl": {
+                    "type": "boolean",
+                    "x-order": "04"
+                },
+                "auth_mode": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "auth_payload": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "server_params": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                },
+                "backend_key_process_id": {
+                    "type": "integer",
+                    "x-order": "08"
+                },
+                "backend_key_secret_key": {
+                    "type": "integer",
+                    "x-order": "09"
+                },
+                "transaction_status": {
+                    "type": "string",
+                    "x-order": "10"
+                }
+            }
+        },
+        "RDPCollector": {
+            "type": "object",
+            "properties": {
+                "target_name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "proto_rdp": {
+                    "type": "boolean",
+                    "x-order": "01"
+                },
+                "proto_ssl": {
+                    "type": "boolean",
+                    "x-order": "02"
+                },
+                "proto_hybrid": {
+                    "type": "boolean",
+                    "x-order": "03"
+                },
+                "proto_rdstls": {
+                    "type": "boolean",
+                    "x-order": "04"
+                },
+                "proto_hybrid_ex": {
+                    "type": "boolean",
+                    "x-order": "05"
+                },
+                "cert_signature": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "cert_version": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "cert_serial_number": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "cert_not_before": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "cert_not_after": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "cert_issuer_country": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "cert_issuer_organization": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "cert_issuer_organizational_unit": {
+                    "type": "string",
+                    "x-order": "13"
+                },
+                "cert_issuer_locality": {
+                    "type": "string",
+                    "x-order": "14"
+                },
+                "cert_issuer_province": {
+                    "type": "string",
+                    "x-order": "15"
+                },
+                "cert_issuer_street_address": {
+                    "type": "string",
+                    "x-order": "16"
+                },
+                "cert_issuer_postal_code": {
+                    "type": "string",
+                    "x-order": "17"
+                },
+                "cert_issuer_serial_number": {
+                    "type": "string",
+                    "x-order": "18"
+                },
+                "cert_issuer_common_name": {
+                    "type": "string",
+                    "x-order": "19"
+                },
+                "cert_subject_country": {
+                    "type": "string",
+                    "x-order": "20"
+                },
+                "cert_subject_organization": {
+                    "type": "string",
+                    "x-order": "21"
+                },
+                "cert_subject_organizational_unit": {
+                    "type": "string",
+                    "x-order": "22"
+                },
+                "cert_subject_locality": {
+                    "type": "string",
+                    "x-order": "23"
+                },
+                "cert_subject_province": {
+                    "type": "string",
+                    "x-order": "24"
+                },
+                "cert_subject_street_address": {
+                    "type": "string",
+                    "x-order": "25"
+                },
+                "cert_subject_postal_code": {
+                    "type": "string",
+                    "x-order": "26"
+                },
+                "cert_subject_serial_number": {
+                    "type": "string",
+                    "x-order": "27"
+                },
+                "cert_subject_common_name": {
+                    "type": "string",
+                    "x-order": "28"
+                },
+                "net_bios_domain_name": {
+                    "type": "string",
+                    "x-order": "29"
+                },
+                "net_bios_computer_name": {
+                    "type": "string",
+                    "x-order": "30"
+                },
+                "dns_domain_name": {
+                    "type": "string",
+                    "x-order": "31"
+                },
+                "dns_computer_name": {
+                    "type": "string",
+                    "x-order": "32"
+                },
+                "major": {
+                    "type": "integer",
+                    "x-order": "33"
+                },
+                "minor": {
+                    "type": "integer",
+                    "x-order": "34"
+                },
+                "build": {
+                    "type": "integer",
+                    "x-order": "35"
+                },
+                "system_time": {
+                    "type": "string",
+                    "x-order": "36"
+                }
+            }
+        },
+        "Redirect": {
+            "type": "object",
+            "properties": {
+                "status_code": {
+                    "type": "integer",
+                    "x-order": "00"
+                },
+                "location": {
+                    "type": "string",
+                    "x-order": "01"
+                }
+            }
+        },
+        "RedisCollector": {
+            "type": "object",
+            "properties": {
+                "ping_response": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "info_response": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "version": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "version_major": {
+                    "type": "integer",
+                    "x-order": "03"
+                },
+                "version_minor": {
+                    "type": "integer",
+                    "x-order": "04"
+                },
+                "version_patch": {
+                    "type": "integer",
+                    "x-order": "05"
+                },
+                "os": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "arch": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "mode": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "git_sha1": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "build_id": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "gcc_version": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "mem_allocator": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "uptime_seconds": {
+                    "type": "integer",
+                    "x-order": "13"
+                },
+                "used_memory": {
+                    "type": "integer",
+                    "x-order": "14"
+                },
+                "connections_rcvd": {
+                    "type": "integer",
+                    "x-order": "15"
+                },
+                "commands_processed": {
+                    "type": "integer",
+                    "x-order": "16"
+                },
+                "non_exist_response": {
+                    "type": "string",
+                    "x-order": "17"
+                },
+                "quit_response": {
+                    "type": "string",
+                    "x-order": "18"
+                }
+            }
+        },
+        "RequestCounts": {
+            "type": "object",
+            "properties": {
+                "all": {
+                    "type": "integer",
+                    "x-order": "00"
+                },
+                "all_cve": {
+                    "type": "integer",
+                    "x-order": "01"
+                },
+                "info": {
+                    "type": "integer",
+                    "x-order": "02"
+                },
+                "low": {
+                    "type": "integer",
+                    "x-order": "03"
+                },
+                "low_cve": {
+                    "type": "integer",
+                    "x-order": "04"
+                },
+                "medium": {
+                    "type": "integer",
+                    "x-order": "05"
+                },
+                "medium_cve": {
+                    "type": "integer",
+                    "x-order": "06"
+                },
+                "high": {
+                    "type": "integer",
+                    "x-order": "07"
+                },
+                "high_cve": {
+                    "type": "integer",
+                    "x-order": "08"
+                },
+                "critical": {
+                    "type": "integer",
+                    "x-order": "09"
+                },
+                "critical_cve": {
+                    "type": "integer",
+                    "x-order": "10"
+                }
+            }
+        },
+        "S7Collector": {
+            "type": "object",
+            "properties": {
+                "system": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "os": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "module": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "module_id": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "module_type": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "cpu_profile": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "hardware": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "firmware": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "plant_id": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "oem_id": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "memory_serial_number": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "copyright": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "serial_number": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "location": {
+                    "type": "string",
+                    "x-order": "12"
+                }
+            }
+        },
+        "SIPCollector": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "accept": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "accept_encoding": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "accept_language": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "allow": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "allow_events": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "contact": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "content_encoding": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "content_language": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "content_type": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "proxy_authenticate": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "session_id": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "subject": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "supported": {
+                    "type": "string",
+                    "x-order": "13"
+                },
+                "user_agent": {
+                    "type": "string",
+                    "x-order": "14"
+                },
+                "via": {
+                    "type": "string",
+                    "x-order": "15"
+                },
+                "warning": {
+                    "type": "string",
+                    "x-order": "16"
+                },
+                "sdp_version": {
+                    "type": "string",
+                    "x-order": "17"
+                },
+                "sdp_owner": {
+                    "type": "string",
+                    "x-order": "18"
+                },
+                "sdp_name": {
+                    "type": "string",
+                    "x-order": "19"
+                },
+                "sdp_information": {
+                    "type": "string",
+                    "x-order": "20"
+                },
+                "sdp_uri": {
+                    "type": "string",
+                    "x-order": "21"
+                },
+                "sdp_email": {
+                    "type": "string",
+                    "x-order": "22"
+                },
+                "sdp_phone": {
+                    "type": "string",
+                    "x-order": "23"
+                },
+                "sdp_connection": {
+                    "type": "string",
+                    "x-order": "24"
+                },
+                "sdp_bandwidth": {
+                    "type": "string",
+                    "x-order": "25"
+                },
+                "sdp_timezone": {
+                    "type": "string",
+                    "x-order": "26"
+                },
+                "sdp_encryption_key": {
+                    "type": "string",
+                    "x-order": "27"
+                },
+                "sdp_attributes": {
+                    "type": "string",
+                    "x-order": "28"
+                },
+                "raw": {
+                    "type": "string",
+                    "x-order": "29"
+                }
+            }
+        },
+        "SMBCollector": {
+            "type": "object",
+            "properties": {
+                "major": {
+                    "type": "integer",
+                    "x-order": "00"
+                },
+                "minor": {
+                    "type": "integer",
+                    "x-order": "01"
+                },
+                "revision": {
+                    "type": "integer",
+                    "x-order": "02"
+                },
+                "version_string": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "native_os": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "has_ntlm": {
+                    "type": "boolean",
+                    "x-order": "05"
+                },
+                "ntlm": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "group_name": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "smbv1_support": {
+                    "type": "boolean",
+                    "x-order": "08"
+                },
+                "smb_dfs_support": {
+                    "type": "boolean",
+                    "x-order": "09"
+                },
+                "smb_leasing_support": {
+                    "type": "boolean",
+                    "x-order": "10"
+                },
+                "smb_multicredit_support": {
+                    "type": "boolean",
+                    "x-order": "11"
+                },
+                "smb_multichan_support": {
+                    "type": "boolean",
+                    "x-order": "12"
+                },
+                "smb_persistent_handle_support": {
+                    "type": "boolean",
+                    "x-order": "13"
+                },
+                "smb_directory_leasing_support": {
+                    "type": "boolean",
+                    "x-order": "14"
+                },
+                "smb_encryption_support": {
+                    "type": "boolean",
+                    "x-order": "15"
+                },
+                "neg_protocol_id": {
+                    "type": "string",
+                    "x-order": "16"
+                },
+                "neg_status": {
+                    "type": "integer",
+                    "x-order": "17"
+                },
+                "neg_command": {
+                    "type": "integer",
+                    "x-order": "18"
+                },
+                "neg_credits": {
+                    "type": "integer",
+                    "x-order": "19"
+                },
+                "neg_flags": {
+                    "type": "integer",
+                    "x-order": "20"
+                },
+                "neg_security_mode": {
+                    "type": "integer",
+                    "x-order": "21"
+                },
+                "neg_dialect_revision": {
+                    "type": "integer",
+                    "x-order": "22"
+                },
+                "neg_server_guid": {
+                    "type": "string",
+                    "x-order": "23"
+                },
+                "neg_capabilities": {
+                    "type": "integer",
+                    "x-order": "24"
+                },
+                "neg_system_time": {
+                    "type": "integer",
+                    "x-order": "25"
+                },
+                "neg_server_start_time": {
+                    "type": "integer",
+                    "x-order": "26"
+                },
+                "neg_authentication_types": {
+                    "type": "string",
+                    "x-order": "27"
+                },
+                "session_protocol_id": {
+                    "type": "string",
+                    "x-order": "28"
+                },
+                "session_status": {
+                    "type": "integer",
+                    "x-order": "29"
+                },
+                "session_command": {
+                    "type": "integer",
+                    "x-order": "30"
+                },
+                "session_credits": {
+                    "type": "integer",
+                    "x-order": "31"
+                },
+                "session_flags": {
+                    "type": "integer",
+                    "x-order": "32"
+                },
+                "session_setup_flags": {
+                    "type": "integer",
+                    "x-order": "33"
+                },
+                "session_target_name": {
+                    "type": "string",
+                    "x-order": "34"
+                },
+                "session_negotiate_flags": {
+                    "type": "integer",
+                    "x-order": "35"
+                }
+            }
+        },
+        "SSHCollector": {
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "software": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "misc": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "pub_key": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "pub_key_type": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "kex_algs": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "ciphers": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "compression": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "macs": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "methods": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "banner": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "raw": {
+                    "type": "string",
+                    "x-order": "11"
+                }
+            }
+        },
+        "TLSCertificate": {
+            "type": "object",
+            "properties": {
+                "fingerprint_md5": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "fingerprint_sha1": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "fingerprint_sha256": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "version": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "serial_number": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "not_before": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "not_after": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "issuer_country": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "issuer_organization": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "issuer_organizational_unit": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "issuer_locality": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "issuer_province": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "issuer_street_address": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "issuer_postal_code": {
+                    "type": "string",
+                    "x-order": "13"
+                },
+                "issuer_serial_number": {
+                    "type": "string",
+                    "x-order": "14"
+                },
+                "issuer_common_name": {
+                    "type": "string",
+                    "x-order": "15"
+                },
+                "subject_country": {
+                    "type": "string",
+                    "x-order": "16"
+                },
+                "subject_organization": {
+                    "type": "string",
+                    "x-order": "17"
+                },
+                "subject_organizational_unit": {
+                    "type": "string",
+                    "x-order": "18"
+                },
+                "subject_locality": {
+                    "type": "string",
+                    "x-order": "19"
+                },
+                "subject_province": {
+                    "type": "string",
+                    "x-order": "20"
+                },
+                "subject_street_address": {
+                    "type": "string",
+                    "x-order": "21"
+                },
+                "subject_postal_code": {
+                    "type": "string",
+                    "x-order": "22"
+                },
+                "subject_serial_number": {
+                    "type": "string",
+                    "x-order": "23"
+                },
+                "subject_common_name": {
+                    "type": "string",
+                    "x-order": "24"
+                }
+            }
+        },
+        "TLSResult": {
+            "type": "object",
+            "properties": {
+                "selected_protocol": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "selected_cipher": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "protocols": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "ciphers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Cipher"
+                    },
+                    "x-order": "03"
+                },
+                "mutual_tls": {
+                    "type": "boolean",
+                    "x-order": "04"
+                },
+                "jarm": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "compression": {
+                    "type": "boolean",
+                    "x-order": "06"
+                },
+                "session_id_resumption": {
+                    "type": "boolean",
+                    "x-order": "07"
+                },
+                "session_ticket_resumption": {
+                    "type": "boolean",
+                    "x-order": "08"
+                },
+                "secure_renegotiation": {
+                    "type": "boolean",
+                    "x-order": "09"
+                },
+                "session_renegotiation": {
+                    "type": "boolean",
+                    "x-order": "10"
+                },
+                "tls_fallback": {
+                    "type": "boolean",
+                    "x-order": "11"
+                },
+                "tls_early_data": {
+                    "type": "boolean",
+                    "x-order": "12"
+                },
+                "certificate": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/Certificate"
+                        }
+                    ],
+                    "x-order": "13"
+                }
+            }
+        },
+        "TelnetCollector": {
+            "type": "object",
+            "properties": {
+                "banner": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "do": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "will": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "wont": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "dont": {
+                    "type": "string",
+                    "x-order": "04"
+                }
+            }
+        },
+        "VNCCollector": {
+            "type": "object",
+            "properties": {
+                "banner": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "version": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "version_major": {
+                    "type": "integer",
+                    "x-order": "02"
+                },
+                "version_minor": {
+                    "type": "integer",
+                    "x-order": "03"
+                },
+                "client_version": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "version_reject_reason": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "security_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "client_security_type": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "handshake_status": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "security_reject_reason": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "vnc_auth_challenge": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "name": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "frame_buffer_width": {
+                    "type": "integer",
+                    "x-order": "12"
+                },
+                "frame_buffer_height": {
+                    "type": "integer",
+                    "x-order": "13"
+                },
+                "bits_per_pixel": {
+                    "type": "integer",
+                    "x-order": "14"
+                },
+                "depth": {
+                    "type": "integer",
+                    "x-order": "15"
+                },
+                "big_endian": {
+                    "type": "boolean",
+                    "x-order": "16"
+                },
+                "true_color": {
+                    "type": "boolean",
+                    "x-order": "17"
+                },
+                "red_max": {
+                    "type": "integer",
+                    "x-order": "18"
+                },
+                "green_max": {
+                    "type": "integer",
+                    "x-order": "19"
+                },
+                "blue_max": {
+                    "type": "integer",
+                    "x-order": "20"
+                },
+                "red_shift": {
+                    "type": "integer",
+                    "x-order": "21"
+                },
+                "green_shift": {
+                    "type": "integer",
+                    "x-order": "22"
+                },
+                "blue_shift": {
+                    "type": "integer",
+                    "x-order": "23"
+                }
+            }
+        },
+        "WhoisContact": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "name": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "organization": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "street": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "city": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "province": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "postal_code": {
+                    "type": "string",
+                    "x-order": "06"
+                },
+                "country": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "phone": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "phone_ext": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "fax": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "fax_ext": {
+                    "type": "string",
+                    "x-order": "11"
+                },
+                "email": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "referral_url": {
+                    "type": "string",
+                    "x-order": "13"
+                }
+            }
+        },
+        "WhoisDomain": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "domain": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "punycode": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "name": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "extension": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "whois_server": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "status": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "name_servers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                },
+                "dns_sec": {
+                    "type": "boolean",
+                    "x-order": "08"
+                },
+                "created_date": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "updated_date": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "expiration_date": {
+                    "type": "string",
+                    "x-order": "11"
+                }
+            }
+        },
+        "WhoisResult": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/WhoisDomain"
+                        }
+                    ],
+                    "x-order": "00"
+                },
+                "registrar": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/WhoisContact"
+                        }
+                    ],
+                    "x-order": "01"
+                },
+                "registrant": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/WhoisContact"
+                        }
+                    ],
+                    "x-order": "02"
+                },
+                "administrative": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/WhoisContact"
+                        }
+                    ],
+                    "x-order": "03"
+                },
+                "technical": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/WhoisContact"
+                        }
+                    ],
+                    "x-order": "04"
+                },
+                "billing": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/WhoisContact"
+                        }
+                    ],
+                    "x-order": "05"
+                }
+            }
+        },
+        "HostList": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "host_count": {
+                    "type": "integer",
+                    "x-order": "03"
+                },
+                "list_id": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "schedules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Schedule"
+                    },
+                    "x-order": "05"
+                },
+                "version": {
+                    "type": "integer",
+                    "x-order": "05"
+                },
+                "created_at": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "x-order": "08"
+                }
+            }
+        },
+        "Job": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "proto": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "host_lists": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "04"
+                },
+                "port_lists": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "05"
+                },
+                "domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                },
+                "urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "08"
+                },
+                "cves": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "09"
+                },
+                "plan_id": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "fingerprint": {
+                    "type": "integer",
+                    "x-order": "11"
+                },
+                "checks": {
+                    "type": "boolean",
+                    "x-order": "12"
+                },
+                "paths_https": {
+                    "type": "boolean",
+                    "x-order": "13"
+                },
+                "host_count": {
+                    "type": "integer",
+                    "x-order": "14"
+                },
+                "port_count": {
+                    "type": "integer",
+                    "x-order": "15"
+                },
+                "domain_count": {
+                    "type": "integer",
+                    "x-order": "16"
+                },
+                "path_count": {
+                    "type": "integer",
+                    "x-order": "17"
+                },
+                "url_count": {
+                    "type": "integer",
+                    "x-order": "18"
+                },
+                "cve_count": {
+                    "type": "integer",
+                    "x-order": "19"
+                },
+                "request_count": {
+                    "type": "integer",
+                    "x-order": "20"
+                },
+                "schedule_id": {
+                    "type": "string",
+                    "x-order": "21"
+                },
+                "created_at": {
+                    "type": "string",
+                    "x-order": "22"
+                },
+                "started_at": {
+                    "type": "string",
+                    "x-order": "23"
+                },
+                "canceled_at": {
+                    "type": "string",
+                    "x-order": "24"
+                },
+                "completed_at": {
+                    "type": "string",
+                    "x-order": "25"
+                },
+                "accessible_host_count": {
+                    "type": "integer",
+                    "x-order": "26"
+                },
+                "accessible_port_count": {
+                    "type": "integer",
+                    "x-order": "27"
+                },
+                "accessible_url_count": {
+                    "type": "integer",
+                    "x-order": "28"
+                },
+                "total_connections": {
+                    "type": "integer",
+                    "x-order": "29"
+                },
+                "checks_run": {
+                    "type": "integer",
+                    "x-order": "30"
+                },
+                "checks_matched": {
+                    "type": "integer",
+                    "x-order": "31"
+                },
+                "status": {
+                    "type": "string",
+                    "x-order": "32"
+                }
+            }
+        },
+        "NewHostList": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                }
+            }
+        },
+        "NewPortList": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "proto": {
+                    "type": "string",
+                    "x-order": "03"
+                }
+            }
+        },
+        "NewSchedule": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "frequency": {
+                    "description": "1m, 5m, 1h, 12h, 1d, 7d, 1w, etc",
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "day": {
+                    "description": "0-6",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/time.Weekday"
+                        }
+                    ],
+                    "x-order": "03"
+                },
+                "hour": {
+                    "description": "0-23",
+                    "type": "integer",
+                    "x-order": "04"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "05"
+                },
+                "host_lists": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                },
+                "port_lists": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "08"
+                },
+                "proto": {
+                    "type": "string",
+                    "x-order": "09"
+                },
+                "fingerprint": {
+                    "type": "integer",
+                    "x-order": "10"
+                },
+                "checks": {
+                    "type": "boolean",
+                    "x-order": "11"
+                },
+                "notify_by_email": {
+                    "type": "boolean",
+                    "x-order": "12"
+                },
+                "callback_url": {
+                    "type": "string",
+                    "x-order": "13"
+                },
+                "summary_only": {
+                    "type": "boolean",
+                    "x-order": "14"
+                }
+            }
+        },
+        "PortList": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "port_count": {
+                    "type": "integer",
+                    "x-order": "03"
+                },
+                "proto": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "list_id": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "version": {
+                    "type": "integer",
+                    "x-order": "06"
+                },
+                "schedules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/Schedule"
+                    },
+                    "x-order": "06"
+                },
+                "created_at": {
+                    "type": "string",
+                    "x-order": "08"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "x-order": "09"
+                }
+            }
+        },
+        "Schedule": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "description": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "frequency": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "day": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/time.Weekday"
+                        }
+                    ],
+                    "x-order": "03"
+                },
+                "hour": {
+                    "type": "integer",
+                    "x-order": "04"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "05"
+                },
+                "host_lists": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/HostList"
+                    },
+                    "x-order": "06"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                },
+                "port_lists": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/PortList"
+                    },
+                    "x-order": "08"
+                },
+                "port_count": {
+                    "type": "integer",
+                    "x-order": "10"
+                },
+                "req_count": {
+                    "type": "integer",
+                    "x-order": "11"
+                },
+                "proto": {
+                    "type": "string",
+                    "x-order": "12"
+                },
+                "fingerprint": {
+                    "type": "integer",
+                    "x-order": "13"
+                },
+                "checks": {
+                    "type": "boolean",
+                    "x-order": "14"
+                },
+                "schedule_id": {
+                    "type": "string",
+                    "x-order": "15"
+                },
+                "notify_email": {
+                    "type": "boolean",
+                    "x-order": "16"
+                },
+                "callback_url": {
+                    "type": "string",
+                    "x-order": "17"
+                },
+                "callback_method": {
+                    "type": "string",
+                    "x-order": "18"
+                },
+                "summary_only": {
+                    "type": "boolean",
+                    "x-order": "19"
+                },
+                "host_count": {
+                    "type": "integer",
+                    "x-order": "9"
+                }
+            }
+        },
+        "Error": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "Callback": {
+            "type": "object",
+            "properties": {
+                "start_url": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "start_method": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "success_url": {
+                    "type": "string",
+                    "x-order": "02"
+                },
+                "success_method": {
+                    "type": "string",
+                    "x-order": "03"
+                },
+                "fail_url": {
+                    "type": "string",
+                    "x-order": "04"
+                },
+                "fail_method": {
+                    "type": "string",
+                    "x-order": "05"
+                },
+                "email": {
+                    "type": "boolean",
+                    "x-order": "06"
+                },
+                "summary_only": {
+                    "type": "boolean",
+                    "x-order": "07"
+                }
+            }
+        },
+        "Request": {
+            "type": "object",
+            "properties": {
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "00"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "01"
+                },
+                "domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "paths_https": {
+                    "type": "boolean",
+                    "x-order": "04"
+                },
+                "urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "05"
+                },
+                "cves": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "proto": {
+                    "type": "string",
+                    "x-order": "07"
+                },
+                "fingerprint": {
+                    "type": "integer",
+                    "x-order": "08"
+                },
+                "checks": {
+                    "type": "boolean",
+                    "x-order": "09"
+                },
+                "collect": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "x-order": "10"
+                },
+                "callback": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/Callback"
+                        }
+                    ],
+                    "x-order": "11"
+                },
+                "checks_opts": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/PlanExecOptions"
+                        }
+                    ],
+                    "x-order": "12"
+                }
+            }
+        },
+        "RequestResults": {
+            "type": "object",
+            "required": [
+                "hosts",
+                "ports"
+            ],
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "x-order": "00"
+                },
+                "proto": {
+                    "type": "string",
+                    "x-order": "01"
+                },
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "02"
+                },
+                "host_lists": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "03"
+                },
+                "ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "04"
+                },
+                "port_lists": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "05"
+                },
+                "domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "06"
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "07"
+                },
+                "urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "08"
+                },
+                "cves": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "09"
+                },
+                "plan_id": {
+                    "type": "string",
+                    "x-order": "10"
+                },
+                "fingerprint": {
+                    "type": "integer",
+                    "x-order": "11"
+                },
+                "checks": {
+                    "type": "boolean",
+                    "x-order": "12"
+                },
+                "paths_https": {
+                    "type": "boolean",
+                    "x-order": "13"
+                },
+                "rejected_hosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "14"
+                },
+                "rejected_ports": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "15"
+                },
+                "rejected_domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "16"
+                },
+                "rejected_urls": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "17"
+                },
+                "rejected_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "18"
+                },
+                "rejected_cves": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-order": "19"
+                },
+                "host_count": {
+                    "type": "integer",
+                    "x-order": "20"
+                },
+                "port_count": {
+                    "type": "integer",
+                    "x-order": "21"
+                },
+                "domain_count": {
+                    "type": "integer",
+                    "x-order": "22"
+                },
+                "path_count": {
+                    "type": "integer",
+                    "x-order": "23"
+                },
+                "url_count": {
+                    "type": "integer",
+                    "x-order": "24"
+                },
+                "cve_count": {
+                    "type": "integer",
+                    "x-order": "25"
+                },
+                "request_count": {
+                    "type": "integer",
+                    "x-order": "26"
+                },
+                "callback_success_url": {
+                    "type": "string",
+                    "x-order": "27"
+                },
+                "callback_success_method": {
+                    "type": "string",
+                    "x-order": "28"
+                },
+                "callback_fail_url": {
+                    "type": "string",
+                    "x-order": "29"
+                },
+                "callback_fail_method": {
+                    "type": "string",
+                    "x-order": "30"
+                },
+                "callback_email": {
+                    "type": "boolean",
+                    "x-order": "31"
+                },
+                "created_at": {
+                    "type": "string",
+                    "x-order": "32"
+                },
+                "status": {
+                    "type": "string",
+                    "x-order": "33"
+                }
+            }
+        },
+        "UsageByDate": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "job_count": {
+                    "type": "integer"
+                },
+                "req_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "time.Weekday": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+            ],
+            "x-enum-varnames": [
+                "Sunday",
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday"
+            ]
+        }
+    },
+    "securityDefinitions": {
+        "ApiKeyAuth": {
+            "description": "Your API key provided by Efflux",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}
