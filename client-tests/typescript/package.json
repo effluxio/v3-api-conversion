@@ -1,0 +1,16 @@
+{
+  "name": "efflux-v3-client-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx test_client.ts",
+    "test:verbose": "tsx test_client.ts --verbose"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
