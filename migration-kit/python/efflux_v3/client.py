@@ -15,9 +15,9 @@ Usage:
     response = client.create_scan(request)
     job_id = response.data.job_id
 
-    job = client.wait_for_job(job_id)
-    results = client.get_scan_results(job_id)
-    for host, host_status in results.scan_results.items():
+    job = client.wait_for_job(job_id)          # polls until not pending / in progress
+    report = client.get_scan_results(job_id).data
+    for host, host_status in report.scan_results.items():
         for port, scan_result in host_status.ports.items():
             if scan_result.open:
                 print(f"{host}:{port} — {scan_result.service}")
@@ -128,9 +128,13 @@ class EffluxV3Client:
         response.data is a RequestResults object with job_id and status.
 
         Raises:
-            EffluxValidationError: 400 — invalid request (bad hosts, ports, etc.)
-            EffluxAuthError: 401 — invalid or expired API key
+            EffluxJobRejectedError: 400 — the job was rejected (for example, no valid
+                hosts). See .errors and .rejected. The server sends a bare
+                RequestResults body for this case, not a Problem.
+            EffluxValidationError: 400 — invalid request body or options
+            EffluxAuthError: 401 — invalid API key or request limit reached
             EffluxRateLimitError: 429 — rate limit exceeded
+            EffluxAPIError: 409 — the same job is already pending or in progress
         """
         raw = self._post("/scans", body=request.to_dict())
         return DocumentResponse(
@@ -170,11 +174,12 @@ class EffluxV3Client:
             links=raw.get("links", {}),
         )
 
-    def get_scan_results(self, job_id: str, details: bool = False) -> JobReport:
+    def get_scan_results(self, job_id: str, details: bool = False) -> DocumentResponse:
         """
         GET /v3/scans/{job_id}/results — Get the full scan results.
 
-        This endpoint returns a JobReport directly (not wrapped in DocumentResponse).
+        Returns DocumentResponse; the JobReport is response.data. (The server
+        wraps the report in { "data", "links" } like every other resource.)
 
         The JobReport contains:
           - scan_results: dict[host_ip, HostStatus]  (was 'results' in v2)
@@ -183,24 +188,38 @@ class EffluxV3Client:
           - check_results: list[CheckResult]           (new in v3)
 
         Args:
-            job_id: The job ID to fetch results for.
-            details: If True, include raw bytes data in ScanResult.raw.
+            job_id: The job ID to fetch results for ("last" = your most recent job).
+            details: If True, keep the request echo arrays (hosts, ports, domains,
+                urls, cves, host_lists, port_lists) and UrlResult.raw, which the
+                server strips by default.
+
+        Raises:
+            EffluxNotFoundError: 404 — the job doesn't exist OR is not complete yet.
+                Poll get_scan() / wait_for_job() first.
         """
         params = {"details": "true"} if details else None
         raw = self._get(f"/scans/{job_id}/results", params=params)
-        return JobReport.from_dict(raw)
+        return DocumentResponse(
+            data=JobReport.from_dict(raw.get("data") or {}),
+            links=raw.get("links", {}),
+        )
 
-    def get_scan_summary(self, job_id: str) -> JobSummary:
+    def get_scan_summary(self, job_id: str) -> DocumentResponse:
         """
         GET /v3/scans/{job_id}/summary — Get aggregated scan statistics.
 
-        New in v3. Returns a lightweight summary without full result payloads:
-        open port numbers, service names, software versions, ASNs, country breakdown.
+        New in v3. Returns DocumentResponse; the JobSummary is response.data.
+        It holds open port numbers, service names, software versions, cert
+        fingerprints, ASNs, and a country breakdown — without the full report.
 
-        Use this instead of get_scan_results() when you only need statistics.
+        Raises:
+            EffluxNotFoundError: 404 — the job doesn't exist OR is not complete yet.
         """
         raw = self._get(f"/scans/{job_id}/summary")
-        return JobSummary.from_dict(raw)
+        return DocumentResponse(
+            data=JobSummary.from_dict(raw.get("data") or {}),
+            links=raw.get("links", {}),
+        )
 
     def list_scans(self, page: int = 1, limit: int = 20) -> PagedResponse:
         """
@@ -244,7 +263,8 @@ class EffluxV3Client:
         v2 path was POST /scans/repeat/{job_id}.
         v3 path is POST /scans/{job_id}/repeat.
 
-        Returns HTTP 201 + DocumentResponse<RequestResults>.
+        Returns DocumentResponse<RequestResults> (HTTP 200; the spec says 201).
+        Raises EffluxJobRejectedError if the repeated job is rejected.
         """
         raw = self._post(f"/scans/{job_id}/repeat")
         return DocumentResponse(
@@ -252,27 +272,33 @@ class EffluxV3Client:
             links=raw.get("links", {}),
         )
 
-    def update_scan_callback(self, job_id: str, callback: CallbackRequest) -> Callback:
+    def update_scan_callback(self, job_id: str, callback: CallbackRequest) -> DocumentResponse:
         """
-        POST /v3/scans/{job_id}/callback — Update callback configuration after job creation.
+        POST /v3/scans/{job_id}/callback — Replace callback configuration after job creation.
 
-        New in v3. Allows changing webhook URLs/methods for an in-progress or completed job.
+        New in v3. The body is a CallbackRequest ({start, success, fail}, each
+        with url/method or callback_id).
 
-        Returns the updated Callback object (with delivery history).
+        Returns DocumentResponse; response.data is the updated Callback
+        (with delivery history).
         """
         raw = self._post(f"/scans/{job_id}/callback", body=callback.to_dict())
-        return Callback.from_dict(raw)
+        return DocumentResponse(
+            data=Callback.from_dict(raw.get("data") or {}),
+            links=raw.get("links", {}),
+        )
 
-    def restart_scan_callback(self, job_id: str) -> Callback:
+    def restart_scan_callback(self, job_id: str) -> DocumentResponse:
         """
-        PUT /v3/scans/{job_id}/callback/restart — Retry pending callback deliveries.
+        PUT /v3/scans/{job_id}/callback/restart — Re-trigger callback deliveries.
 
-        New in v3. Re-triggers any callbacks that haven't completed delivery.
-
-        Returns the updated Callback object.
+        New in v3. Returns DocumentResponse; response.data is the updated Callback.
         """
         raw = self._put(f"/scans/{job_id}/callback/restart")
-        return Callback.from_dict(raw)
+        return DocumentResponse(
+            data=Callback.from_dict(raw.get("data") or {}),
+            links=raw.get("links", {}),
+        )
 
     # -----------------------------------------------------------------------
     # Polling helpers
@@ -285,10 +311,13 @@ class EffluxV3Client:
         timeout: float = 3600.0,
     ) -> Job:
         """
-        Poll GET /v3/scans/{job_id} until the job completes or fails.
+        Poll GET /v3/scans/{job_id} until the job leaves "pending" / "in progress".
 
         Replaces the v2 /subscribe long-poll endpoint.
         For real-time results, use WebSocket streams instead (see docs).
+
+        Check job.is_complete before fetching results: get_scan_results()
+        returns 404 for jobs that ended "canceled" or "rejected".
 
         Args:
             job_id: The job to wait for.
@@ -296,7 +325,7 @@ class EffluxV3Client:
             timeout: Maximum seconds to wait (default 3600 = 1 hour).
 
         Returns:
-            The completed (or failed) Job.
+            The finished Job ("complete", "canceled", or "rejected").
 
         Raises:
             TimeoutError: If the job doesn't complete within timeout seconds.
@@ -320,19 +349,24 @@ class EffluxV3Client:
         Create a scan job and wait for it to complete.
 
         Returns:
-            (Job, JobReport) — the completed job and its full results.
+            (Job, JobReport) — the finished job and its full results.
+            The report is unwrapped for convenience. It is None if the job
+            ended "canceled" or "rejected".
 
         Usage:
             job, report = client.run_scan_and_wait(ScanRequest(
                 hosts=["10.0.0.0/24"],
                 ports=["top_100"],
             ))
-            print(f"Found {report.accessible_host_count} hosts")
+            if report:
+                print(f"Found {report.accessible_host_count} hosts")
         """
         create_response = self.create_scan(request)
         job_id = create_response.data.job_id
         job = self.wait_for_job(job_id, poll_interval=poll_interval, timeout=timeout)
-        report = self.get_scan_results(job_id)
+        if not job.is_complete:
+            return job, None
+        report = self.get_scan_results(job_id).data
         return job, report
 
     # -----------------------------------------------------------------------

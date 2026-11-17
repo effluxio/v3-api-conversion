@@ -28,6 +28,7 @@ migration-kit/
         ├── index.ts            Re-exports everything
         ├── types.ts            All v3 TypeScript interfaces
         ├── client.ts           EffluxV3Client class + error classes
+        ├── helpers.ts          checksByPort, splitHeaders, getHeader (v2-shape helpers)
         └── examples/
             └── migrate_scans.ts  v2 vs v3 code side-by-side for every operation
 ```
@@ -82,9 +83,32 @@ GET /scans/{job_id}  →  { status, results: {...}, domain_info: {...}, url_info
 
 // v3: status and results are separate
 GET /scans/{job_id}          →  { data: { status, counts... } }
-GET /scans/{job_id}/results  →  { status, scan_results: {...}, domain_results: {...}, url_results: {...} }
-GET /scans/{job_id}/summary  →  { ports: [...], services: [...], hosts_per_country: {...} }
+GET /scans/{job_id}/results  →  { data: { status, scan_results: {...}, domain_results: {...}, url_results: {...}, check_results: [...] } }
+GET /scans/{job_id}/summary  →  { data: { ports: [...], services: [...], hosts_per_country: {...} } }
 ```
+
+`/results` and `/summary` return **404 until `status` is `"complete"`**. Status values are
+`pending`, `in progress`, `complete`, `canceled`, `rejected`. Poll `GET /scans/{job_id}`.
+
+### Per-port results and HTTP results changed shape
+
+```
+PortStatus → ScanResult
+  certificate          → certificates { certificate, chain, chain_valid, ocsp_staple, tls_version }
+  ssh_collection, …    → collection.ssh, …
+  app_detections       → detections (flat)
+  checks               → moved off the port (HostStatus.checks / check_results)
+
+HTTPResult → UrlResult
+  requested_url                    → url
+  security_headers + other_headers → headers
+  new: cookies, certificates, detections, favicon hashes, parsed url_* parts
+```
+
+### Leftover v2 fields are silently ignored
+
+The v3 server does not reject unknown fields. A leftover `checks_opts` or flat
+`success_url` callback is dropped with no error. Migrate them explicitly.
 
 ### Three field renames in JobReport
 
@@ -114,7 +138,7 @@ v3: fingerprint: true (boolean)
 ### checks_opts renamed and simplified
 
 ```
-v2: checks_opts    (7 options including include_ids, exclude_ids, etc.)
+v2: checks_opts    (8 options including include_ids, exclude_ids, etc.)
 v3: checks_options (3 options: cves_only, min_severity, max_severity only)
 ```
 

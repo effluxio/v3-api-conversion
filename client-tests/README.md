@@ -27,6 +27,7 @@ Each script:
 
 ```bash
 export EFFLUX_API_KEY=your-api-key
+export EFFLUX_BASE_URL=https://api.efflux.io/v3   # optional override (e.g. staging)
 ```
 
 ## Run both
@@ -72,7 +73,7 @@ npm test -- --resource scans --verbose
 
 | Resource | Create | List | Detail | Results |
 |---|---|---|---|---|
-| scans | `POST /scans` (`1.1.1.1/32`, `top_10`, `fingerprint: true`) → `RequestResults` | `PagedResponse` + `Job` fields / dataclass | `GET /scans/{id}` | `JobReport` (`scan_results`, `domain_results`, `url_results`, `check_results`) + `JobSummary` |
+| scans | `POST /scans` (`1.1.1.1/32`, `top_10`, `fingerprint: true`) → `RequestResults` | `PagedResponse` + `Job` fields / dataclass | `GET /scans/{id}` | `DocumentResponse<JobReport>` (`scan_results`, `domain_results`, `url_results`, `check_results`) + `DocumentResponse<JobSummary>`, plus a schema-drift check: every key in the raw report must be a field the models/types define |
 | captures | envelope + `capture_id` | `GET /captures/{id}` | `GET .../results` |
 | permutations | envelope + `check_id` | `GET /permutations/{id}` | `GET .../report` |
 | surveys | envelope + `survey_id` | `GET /assetmaps/surveys/{id}` | `GET .../map` |

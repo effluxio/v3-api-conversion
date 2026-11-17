@@ -3,6 +3,7 @@
  *
  * Requires:
  *   export EFFLUX_API_KEY=your-key
+ *   export EFFLUX_BASE_URL=https://...   # optional; defaults to https://api.efflux.io/v3
  *
  * Usage (from this directory):
  *   npm install
@@ -149,6 +150,68 @@ function assertKeys(obj: any, required: string[], label: string): AnyObj {
   return obj as AnyObj;
 }
 
+// Field names the v3 server sends for each result shape (empire-models v1.20261022.1).
+// Used to catch drift between the server and migration-kit/typescript/src/types.ts.
+const KNOWN_KEYS: Record<string, string[]> = {
+  JobReport: [
+    "job_id", "user_id", "schedule_id", "proto", "hosts", "host_lists", "ports", "port_lists",
+    "domains", "urls", "cves", "host_count", "port_count", "domain_count", "url_count", "cve_count",
+    "request_count", "fingerprint", "checks", "tags", "description", "created_at", "started_at",
+    "completed_at", "accessible_host_count", "accessible_port_count", "accessible_domain_count",
+    "accessible_url_count", "total_connections", "checks_run", "checks_matched", "status",
+    "scan_results", "domain_results", "url_results", "check_results",
+  ],
+  HostStatus: ["metadata", "tags", "ports", "checks"],
+  ScanResult: [
+    "host", "port", "proto", "checked_at", "tags", "open", "service", "software", "version", "info",
+    "host_name", "os", "device_type", "cpe", "tls", "http", "http_info", "certificates", "detections",
+    "collection", "bytes_rcvd", "raw",
+  ],
+  UrlResult: [
+    "url", "url_host", "url_port", "url_domain", "url_scheme", "url_path", "url_query", "checked_at",
+    "tags", "remote_host", "remote_port", "supports_http2", "supports_http3", "secure_redirect",
+    "redirect_chain", "headers", "cookies", "script_urls", "certificates", "detections", "favicon_url",
+    "favicon_mmh3", "favicon_md5", "favicon_sha1", "favicon_sha256", "raw",
+  ],
+  Certificates: ["certificate", "chain", "chain_valid", "ocsp_staple", "tls_version"],
+  DomainInfo: ["dns_info", "whois", "rdap", "http_info", "https_info"],
+};
+
+/** Walk a raw JobReport and list keys the types don't define. */
+function reportDrift(report: any): string[] {
+  const found = new Map<string, Set<string>>();
+  const note = (path: string, raw: any, shape: string) => {
+    if (!raw || typeof raw !== "object") return;
+    const known = new Set(KNOWN_KEYS[shape]);
+    for (const k of Object.keys(raw)) {
+      if (!known.has(k)) {
+        if (!found.has(path)) found.set(path, new Set());
+        found.get(path)!.add(k);
+      }
+    }
+  };
+  const urlResult = (path: string, raw: any) => {
+    note(path, raw, "UrlResult");
+    note(`${path}.certificates`, raw?.certificates, "Certificates");
+  };
+  note("JobReport", report, "JobReport");
+  for (const hs of Object.values<any>(report?.scan_results ?? {})) {
+    note("HostStatus", hs, "HostStatus");
+    for (const sr of Object.values<any>(hs?.ports ?? {})) {
+      note("ScanResult", sr, "ScanResult");
+      urlResult("ScanResult.http_info", sr?.http_info);
+      note("ScanResult.certificates", sr?.certificates, "Certificates");
+    }
+  }
+  for (const di of Object.values<any>(report?.domain_results ?? {})) {
+    note("DomainInfo", di, "DomainInfo");
+    urlResult("DomainInfo.http_info", di?.http_info);
+    urlResult("DomainInfo.https_info", di?.https_info);
+  }
+  for (const ur of Object.values<any>(report?.url_results ?? {})) urlResult("url_results{}", ur);
+  return [...found.entries()].map(([path, keys]) => `${path}: ${[...keys].sort().join(", ")}`);
+}
+
 function createdAtKey(item: any): string {
   return String(item?.created_at ?? item?.updated_at ?? "");
 }
@@ -247,31 +310,52 @@ async function testScans(client: InstanceType<typeof EffluxV3Client>): Promise<v
 
     if (resultsJobId) {
       try {
-        const report = await client.getScanResults(resultsJobId);
-        assertKeys(report, ["job_id", "status", "scan_results", "domain_results", "url_results", "check_results"], "JobReport");
-        assertType(report.scan_results, "object", "scan_results");
-        assertType(report.domain_results, "object", "domain_results");
-        assertType(report.url_results, "object", "url_results");
-        assertType(report.check_results, "array", "check_results");
+        const doc = await client.getScanResults(resultsJobId, true);
+        const report = assertDocument(doc);   // results are wrapped in { data, links }
+        assertKeys(report, ["job_id", "status"], "JobReport");
+        assert(report.job_id === resultsJobId, `JobReport.job_id mismatch: ${report.job_id} != ${resultsJobId}`);
+        // The result maps/arrays are omitted when empty.
+        const scanResults = report.scan_results ?? {};
+        const domainResults = report.domain_results ?? {};
+        const urlResults = report.url_results ?? {};
+        const checkResults = report.check_results ?? [];
+        assertType(scanResults, "object", "scan_results");
+        assertType(domainResults, "object", "domain_results");
+        assertType(urlResults, "object", "url_results");
+        assertType(checkResults, "array", "check_results");
+        for (const [host, hs] of Object.entries<any>(scanResults)) {
+          for (const [port, sr] of Object.entries<any>(hs.ports ?? {})) {
+            assertType(sr, "object", `scan_results[${host}].ports[${port}]`);
+            if (sr.http_info !== undefined) assertType(sr.http_info, "object", "ScanResult.http_info");
+          }
+        }
         ok(
-          "getScanResults → JobReport",
-          `hosts=${Object.keys(report.scan_results).length} domains=${Object.keys(report.domain_results).length} ` +
-            `urls=${Object.keys(report.url_results).length} checks=${report.check_results.length}`,
+          "getScanResults → DocumentResponse<JobReport>",
+          `hosts=${Object.keys(scanResults).length} domains=${Object.keys(domainResults).length} ` +
+            `urls=${Object.keys(urlResults).length} checks=${checkResults.length}`,
         );
+        const drift = reportDrift(report);
+        if (drift.length) throw new Error(`server sent fields the types don't define: ${drift.join("; ")}`);
+        ok("getScanResults raw JSON matches types", "no unknown keys");
       } catch (e) {
         if (e instanceof EffluxNotFoundError) skip("getScanResults", "results not found");
         else fail("getScanResults", e);
       }
 
       try {
-        const summary = await client.getScanSummary(resultsJobId);
-        assertKeys(summary, ["job_id", "ports", "services", "hosts_per_country"], "JobSummary");
-        assertType(summary.ports, "array", "summary.ports");
-        assertType(summary.services, "array", "summary.services");
-        assertType(summary.hosts_per_country, "object", "summary.hosts_per_country");
+        const doc = await client.getScanSummary(resultsJobId);
+        const summary = assertDocument(doc);   // summary is wrapped in { data, links }
+        assertKeys(summary, ["job_id"], "JobSummary");
+        assert(summary.job_id === resultsJobId, `JobSummary.job_id mismatch: ${summary.job_id} != ${resultsJobId}`);
+        // ports / services / hosts_per_country are omitted when empty.
+        if (summary.ports !== undefined) assertType(summary.ports, "array", "summary.ports");
+        if (summary.services !== undefined) assertType(summary.services, "array", "summary.services");
+        if (summary.hosts_per_country !== undefined) {
+          assertType(summary.hosts_per_country, "object", "summary.hosts_per_country");
+        }
         ok(
-          "getScanSummary → JobSummary",
-          `accessible_hosts=${summary.accessible_host_count} ports=${summary.ports.length}`,
+          "getScanSummary → DocumentResponse<JobSummary>",
+          `accessible_hosts=${summary.accessible_host_count} ports=${(summary.ports ?? []).length}`,
         );
       } catch (e) {
         if (e instanceof EffluxNotFoundError) skip("getScanSummary", "summary not found");
@@ -834,8 +918,10 @@ async function main(): Promise<number> {
   }
 
   const apiKey = requireApiKey();
+  const baseUrl = (process.env.EFFLUX_BASE_URL ?? "").trim() || undefined;
   const client = new EffluxV3Client({
     apiKey,
+    baseUrl,
     defaultHeaders: {
       "User-Agent": "Efflux-Online/1.0 (Web Client)",
       "X-Proxy-Source": "nextjs",

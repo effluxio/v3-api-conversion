@@ -11,9 +11,14 @@ Key differences from v2 model structure:
 - JobReport.domain_results replaces JobReport.domain_info
 - JobReport.url_results replaces JobReport.url_info (was array, now dict)
 - JobReport.check_results is a new top-level list of findings across all hosts
-- ScanResult replaces PortStatus
+- ScanResult replaces PortStatus (checks moved off the port; certificate -> certificates;
+  *_collection fields -> one collection dict; app_detections -> detections)
+- UrlResult replaces HTTPResult (requested_url -> url; security_headers + other_headers -> headers)
 - fingerprint is bool (not int)
 - Callback is nested {start, success, fail} (not flat)
+- Job status values: pending, in progress, complete, canceled, rejected
+
+Field lists match the v3 server models (empire-models v1.20261022.1).
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -84,16 +89,31 @@ class DocumentResponse:
 
 @dataclass
 class CallbackEvent:
-    """A single callback event target (start, success, or fail)."""
+    """
+    A single callback event target (start, success, or fail).
+
+    Set either url (+ optional method) or callback_id (a saved webhook from
+    POST /v3/webhooks), not both. "$job_id" in url is replaced with the job ID.
+    """
     url: str = ""
     method: str = "POST"
+    callback_id: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "CallbackEvent":
-        return cls(url=d.get("url", ""), method=d.get("method", "POST"))
+        return cls(
+            url=d.get("url", ""),
+            method=d.get("method", "POST"),
+            callback_id=d.get("callback_id", ""),
+        )
 
     def to_dict(self) -> dict:
-        return {"url": self.url, "method": self.method}
+        if self.callback_id:
+            return {"callback_id": self.callback_id}
+        result = {"url": self.url}
+        if self.method:
+            result["method"] = self.method
+        return result
 
 
 @dataclass
@@ -109,10 +129,17 @@ class CallbackRequest:
         success_url / success_method → success.url / success.method
         fail_url / fail_method     → fail.url / fail.method
         email / summary_only       → REMOVED (no equivalent in v3)
+
+    WARNING: the v3 server ignores unknown fields, so a v2-style flat callback
+    sent to v3 is silently dropped and no callback fires.
+
+    use_defaults: None follows your saved preferences (GET/PUT /v3/preferences);
+    False skips them for this job.
     """
     start: Optional[CallbackEvent] = None
     success: Optional[CallbackEvent] = None
     fail: Optional[CallbackEvent] = None
+    use_defaults: Optional[bool] = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "CallbackRequest":
@@ -120,16 +147,19 @@ class CallbackRequest:
             start=CallbackEvent.from_dict(d["start"]) if d.get("start") else None,
             success=CallbackEvent.from_dict(d["success"]) if d.get("success") else None,
             fail=CallbackEvent.from_dict(d["fail"]) if d.get("fail") else None,
+            use_defaults=d.get("use_defaults"),
         )
 
     def to_dict(self) -> dict:
-        result = {}
+        result: dict = {}
         if self.start:
             result["start"] = self.start.to_dict()
         if self.success:
             result["success"] = self.success.to_dict()
         if self.fail:
             result["fail"] = self.fail.to_dict()
+        if self.use_defaults is not None:
+            result["use_defaults"] = self.use_defaults
         return result
 
 
@@ -153,19 +183,30 @@ class CallbackAttempt:
 
 @dataclass
 class CallbackStatus:
-    """Status of a single callback event including delivery history."""
+    """
+    Status of a single callback event including delivery history.
+
+    source is "request" when the phase came from the scan request and
+    "preference" when it was filled from your saved callback preferences.
+    """
     url: str = ""
     method: str = "POST"
+    callback_id: str = ""
+    delivery_id: str = ""
     attempts: List[CallbackAttempt] = field(default_factory=list)
     complete: bool = False
+    source: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "CallbackStatus":
         return cls(
             url=d.get("url", ""),
             method=d.get("method", "POST"),
+            callback_id=d.get("callback_id", ""),
+            delivery_id=d.get("delivery_id", ""),
             attempts=[CallbackAttempt.from_dict(a) for a in d.get("attempts", [])],
             complete=d.get("complete", False),
+            source=d.get("source", ""),
         )
 
 
@@ -199,11 +240,17 @@ class ChecksOptions:
     """
     Options controlling which vulnerability checks run on a scan.
 
-    v2 field name: checks_opts (with 7 options)
+    v2 field name: checks_opts (with 8 options)
     v3 field name: checks_options (with 3 options)
 
     Removed from v3: include_ids, exclude_ids, limit_to_ids,
                      exclude_targets, limit_to_targets
+
+    min_severity / max_severity must be one of: info, low, medium, high, critical,
+    and min_severity must not be above max_severity.
+
+    WARNING: the v3 server ignores unknown fields, so a leftover "checks_opts"
+    key is silently dropped and checks run unfiltered.
     """
     cves_only: bool = False
     min_severity: Optional[str] = None
@@ -385,6 +432,14 @@ class RequestResults:
 # Job (list / get)
 # ---------------------------------------------------------------------------
 
+# Job status values sent by the v3 server. Note the space in "in progress".
+JOB_STATUS_PENDING = "pending"
+JOB_STATUS_IN_PROGRESS = "in progress"
+JOB_STATUS_COMPLETE = "complete"
+JOB_STATUS_CANCELED = "canceled"
+JOB_STATUS_REJECTED = "rejected"
+JOB_STATUS_ACCEPTABLE = "acceptable"  # only from POST /v3/scans/eval
+
 @dataclass
 class Job:
     """
@@ -483,30 +538,25 @@ class Job:
 
     @property
     def is_complete(self) -> bool:
-        return self.status == "complete"
+        return self.status == JOB_STATUS_COMPLETE
 
     @property
     def is_running(self) -> bool:
-        return self.status in ("pending", "running")
+        """True while the job is queued or running ("pending" / "in progress")."""
+        return self.status in (JOB_STATUS_PENDING, JOB_STATUS_IN_PROGRESS)
 
     @property
     def is_failed(self) -> bool:
-        return self.status == "failed"
+        """True if the job ended without results ("canceled" or "rejected")."""
+        return self.status in (JOB_STATUS_CANCELED, JOB_STATUS_REJECTED)
 
 
 # ---------------------------------------------------------------------------
 # Scan Result Types
+#
+# Zero values (False, "", 0, empty lists) are omitted from v3 JSON, so every
+# from_dict() below supplies a default.
 # ---------------------------------------------------------------------------
-
-@dataclass
-class Redirect:
-    status_code: int = 0
-    location: str = ""
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "Redirect":
-        return cls(status_code=d.get("status_code", 0), location=d.get("location", ""))
-
 
 @dataclass
 class Header:
@@ -515,174 +565,281 @@ class Header:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Header":
-        return cls(name=d.get("name", ""), values=d.get("values", []))
+        return cls(name=d.get("name", ""), values=d.get("values") or [])
+
+
+@dataclass
+class Certificate:
+    """
+    One X.509 certificate (v3 models.Certificate).
+
+    v2 TLSCertificate → v3 Certificate:
+        fingerprint_md5/sha1/sha256, serial_number → unchanged
+        not_before / not_after                     → now integers (were strings)
+        issuer_* (9 fields)                        → issuer (one string)
+        subject_* (9 fields)                       → subject (one string)
+        version                                    → removed
+    """
+    serial_number: str = ""
+    issuer: str = ""
+    subject: str = ""
+    not_before: int = 0
+    not_after: int = 0
+    key_usage: List[str] = field(default_factory=list)
+    ext_key_usage: List[str] = field(default_factory=list)
+    signature_algorithm: str = ""
+    signature_valid: bool = False
+    self_signed: bool = False
+    is_ca: bool = False
+    is_ev: bool = False
+    is_precert: bool = False
+    public_key: str = ""
+    public_key_algorithm: str = ""
+    ocsp_servers: List[str] = field(default_factory=list)
+    ocsp_response: str = ""
+    fingerprint_md5: str = ""
+    fingerprint_sha1: str = ""
+    fingerprint_sha256: str = ""
+    fingerprint_spki: str = ""
+    fingerprint_spki_subject: str = ""
+    fingerprint_tbs_certificate: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Certificate":
+        return cls(
+            serial_number=d.get("serial_number", ""),
+            issuer=d.get("issuer", ""),
+            subject=d.get("subject", ""),
+            not_before=d.get("not_before", 0),
+            not_after=d.get("not_after", 0),
+            key_usage=d.get("key_usage") or [],
+            ext_key_usage=d.get("ext_key_usage") or [],
+            signature_algorithm=d.get("signature_algorithm", ""),
+            signature_valid=d.get("signature_valid", False),
+            self_signed=d.get("self_signed", False),
+            is_ca=d.get("is_ca", False),
+            is_ev=d.get("is_ev", False),
+            is_precert=d.get("is_precert", False),
+            public_key=d.get("public_key", ""),
+            public_key_algorithm=d.get("public_key_algorithm", ""),
+            ocsp_servers=d.get("ocsp_servers") or [],
+            ocsp_response=d.get("ocsp_response", ""),
+            fingerprint_md5=d.get("fingerprint_md5", ""),
+            fingerprint_sha1=d.get("fingerprint_sha1", ""),
+            fingerprint_sha256=d.get("fingerprint_sha256", ""),
+            fingerprint_spki=d.get("fingerprint_spki", ""),
+            fingerprint_spki_subject=d.get("fingerprint_spki_subject", ""),
+            fingerprint_tbs_certificate=d.get("fingerprint_tbs_certificate", ""),
+        )
+
+
+@dataclass
+class Certificates:
+    """
+    TLS certificate info for a port, URL, or redirect hop (v3 models.Certificates).
+
+    Replaces v2 PortStatus.certificate (a single flat TLSCertificate).
+    """
+    certificate: Optional[Certificate] = None   # the leaf certificate
+    chain: List[Certificate] = field(default_factory=list)
+    chain_valid: bool = False
+    ocsp_staple: bool = False
+    tls_version: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Certificates":
+        d = d or {}
+        return cls(
+            certificate=Certificate.from_dict(d["certificate"]) if d.get("certificate") else None,
+            chain=[Certificate.from_dict(c) for c in d.get("chain") or []],
+            chain_valid=d.get("chain_valid", False),
+            ocsp_staple=d.get("ocsp_staple", False),
+            tls_version=d.get("tls_version", ""),
+        )
+
+
+@dataclass
+class Redirect:
+    """
+    One hop in UrlResult.redirect_chain.
+    v3 adds remote_host, remote_port, headers, script_urls, certificates per hop.
+    """
+    status_code: int = 0
+    location: str = ""
+    remote_host: str = ""
+    remote_port: str = ""
+    headers: List[Header] = field(default_factory=list)
+    script_urls: List[str] = field(default_factory=list)
+    certificates: Optional[Certificates] = None
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Redirect":
+        return cls(
+            status_code=d.get("status_code", 0),
+            location=d.get("location", ""),
+            remote_host=d.get("remote_host", ""),
+            remote_port=d.get("remote_port", ""),
+            headers=[Header.from_dict(h) for h in d.get("headers") or []],
+            script_urls=d.get("script_urls") or [],
+            certificates=Certificates.from_dict(d["certificates"]) if d.get("certificates") else None,
+        )
 
 
 @dataclass
 class Cookie:
+    """A cookie set by an HTTP response (v3 models.Cookie)."""
     name: str = ""
     value: str = ""
-    domain: str = ""
     path: str = ""
+    domain: str = ""
+    expires: str = ""
+    max_age: int = 0
     secure: bool = False
     http_only: bool = False
-    same_site: str = ""
-    expires: str = ""
+    raw_cookie: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "Cookie":
         return cls(
             name=d.get("name", ""),
             value=d.get("value", ""),
-            domain=d.get("domain", ""),
             path=d.get("path", ""),
+            domain=d.get("domain", ""),
+            expires=d.get("expires", ""),
+            max_age=d.get("max_age", 0),
             secure=d.get("secure", False),
             http_only=d.get("http_only", False),
-            same_site=d.get("same_site", ""),
-            expires=d.get("expires", ""),
+            raw_cookie=d.get("raw_cookie", ""),
         )
 
 
 @dataclass
 class Detection:
-    """Wappalyzer-style application detection."""
+    """
+    A technology detection (v3 models.Detection).
+
+    v2 had app_detections: [{url, detections: [{name, matches, version, url}]}].
+    v3 has a flat list of {name, info, cpe, website, categories}; there is no
+    version or matches field.
+    """
     name: str = ""
-    matches: str = ""
-    version: str = ""
-    url: str = ""
+    info: str = ""
+    cpe: str = ""
+    website: str = ""
+    categories: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Detection":
         return cls(
             name=d.get("name", ""),
-            matches=d.get("matches", ""),
-            version=d.get("version", ""),
-            url=d.get("url", ""),
+            info=d.get("info", ""),
+            cpe=d.get("cpe", ""),
+            website=d.get("website", ""),
+            categories=d.get("categories") or [],
         )
 
 
-@dataclass
-class TLSResult:
-    selected_protocol: str = ""
-    selected_cipher: str = ""
-    protocols: List[str] = field(default_factory=list)
-    mutual_tls: bool = False
-    jarm: str = ""
-    compression: bool = False
-    session_id_resumption: bool = False
-    session_ticket_resumption: bool = False
-    secure_renegotiation: bool = False
-    session_renegotiation: bool = False
-    tls_fallback: bool = False
-    tls_early_data: bool = False
-    certificate: Optional[dict] = None
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "TLSResult":
-        return cls(
-            selected_protocol=d.get("selected_protocol", ""),
-            selected_cipher=d.get("selected_cipher", ""),
-            protocols=d.get("protocols", []),
-            mutual_tls=d.get("mutual_tls", False),
-            jarm=d.get("jarm", ""),
-            compression=d.get("compression", False),
-            session_id_resumption=d.get("session_id_resumption", False),
-            session_ticket_resumption=d.get("session_ticket_resumption", False),
-            secure_renegotiation=d.get("secure_renegotiation", False),
-            session_renegotiation=d.get("session_renegotiation", False),
-            tls_fallback=d.get("tls_fallback", False),
-            tls_early_data=d.get("tls_early_data", False),
-            certificate=d.get("certificate"),
-        )
-
-
-@dataclass
-class Certificate:
-    """Certificate data from TLS scan."""
-    fingerprint_md5: str = ""
-    fingerprint_sha1: str = ""
-    fingerprint_sha256: str = ""
-    version: str = ""
-    serial_number: str = ""
-    not_before: str = ""
-    not_after: str = ""
-    issuer_common_name: str = ""
-    issuer_organization: str = ""
-    issuer_country: str = ""
-    subject_common_name: str = ""
-    subject_organization: str = ""
-    subject_country: str = ""
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "Certificate":
-        return cls(
-            fingerprint_md5=d.get("fingerprint_md5", ""),
-            fingerprint_sha1=d.get("fingerprint_sha1", ""),
-            fingerprint_sha256=d.get("fingerprint_sha256", ""),
-            version=d.get("version", ""),
-            serial_number=d.get("serial_number", ""),
-            not_before=d.get("not_before", ""),
-            not_after=d.get("not_after", ""),
-            issuer_common_name=d.get("issuer_common_name", ""),
-            issuer_organization=d.get("issuer_organization", ""),
-            issuer_country=d.get("issuer_country", ""),
-            subject_common_name=d.get("subject_common_name", ""),
-            subject_organization=d.get("subject_organization", ""),
-            subject_country=d.get("subject_country", ""),
-        )
-
-
-@dataclass
-class Certificates:
-    """Container for certificates found on a port."""
-    # The collection field; raw dict kept flexible for protocol-specific certs
-    raw: Dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "Certificates":
-        return cls(raw=d or {})
+# Header names treated as "security headers" by split_headers(). v2 split headers
+# into security_headers / other_headers server-side; v3 returns one list.
+SECURITY_HEADERS = frozenset({
+    "strict-transport-security", "content-security-policy", "content-security-policy-report-only",
+    "x-frame-options", "x-content-type-options", "referrer-policy", "permissions-policy",
+    "cross-origin-opener-policy", "cross-origin-embedder-policy", "cross-origin-resource-policy",
+    "x-xss-protection",
+})
 
 
 @dataclass
 class UrlResult:
     """
-    HTTP/HTTPS result for a URL or port.
-    Replaces HTTPResult from v2 — includes more data (cookies, TLS, detections).
-    In JobReport, url_results is a map<url_string, UrlResult> (v2 url_info was an array).
+    HTTP(S) result for a URL, a port, or a domain (v3 models.UrlResult).
+    Replaces v2 HTTPResult.
+
+    v2 HTTPResult → v3 UrlResult:
+        requested_url                      → url (also the key in JobReport.url_results)
+        security_headers + other_headers   → headers (one list; see split_headers())
+        redirect_chain                     → redirect_chain (hops now carry more data)
+        new: url_* parts, checked_at, tags, cookies, certificates, detections,
+             favicon_* hashes, raw (only with details=true)
+
+    There is no top-level status code; status codes are on redirect_chain hops.
     """
-    requested_url: str = ""
+    url: str = ""
+    url_host: str = ""
+    url_port: str = ""
+    url_domain: str = ""
+    url_scheme: str = ""
+    url_path: str = ""
+    url_query: str = ""
+    checked_at: str = ""
+    tags: List[str] = field(default_factory=list)
     remote_host: str = ""
     remote_port: str = ""
     supports_http2: bool = False
     supports_http3: bool = False
     secure_redirect: bool = False
-    status_code: int = 0
     redirect_chain: List[Redirect] = field(default_factory=list)
-    security_headers: List[Header] = field(default_factory=list)
-    other_headers: List[Header] = field(default_factory=list)
-    script_urls: List[str] = field(default_factory=list)
+    headers: List[Header] = field(default_factory=list)
     cookies: List[Cookie] = field(default_factory=list)
+    script_urls: List[str] = field(default_factory=list)
+    certificates: Optional[Certificates] = None
     detections: List[Detection] = field(default_factory=list)
-    tls: Optional[TLSResult] = None
+    favicon_url: str = ""
+    favicon_mmh3: str = ""
+    favicon_md5: str = ""
+    favicon_sha1: str = ""
+    favicon_sha256: str = ""
+    raw: str = ""
 
     @classmethod
     def from_dict(cls, d: dict) -> "UrlResult":
         return cls(
-            requested_url=d.get("requested_url", ""),
+            url=d.get("url", ""),
+            url_host=d.get("url_host", ""),
+            url_port=d.get("url_port", ""),
+            url_domain=d.get("url_domain", ""),
+            url_scheme=d.get("url_scheme", ""),
+            url_path=d.get("url_path", ""),
+            url_query=d.get("url_query", ""),
+            checked_at=d.get("checked_at", ""),
+            tags=d.get("tags") or [],
             remote_host=d.get("remote_host", ""),
             remote_port=d.get("remote_port", ""),
             supports_http2=d.get("supports_http2", False),
             supports_http3=d.get("supports_http3", False),
             secure_redirect=d.get("secure_redirect", False),
-            status_code=d.get("status_code", 0),
-            redirect_chain=[Redirect.from_dict(r) for r in d.get("redirect_chain", [])],
-            security_headers=[Header.from_dict(h) for h in d.get("security_headers", [])],
-            other_headers=[Header.from_dict(h) for h in d.get("other_headers", [])],
-            script_urls=d.get("script_urls", []),
-            cookies=[Cookie.from_dict(c) for c in d.get("cookies", [])],
-            detections=[Detection.from_dict(det) for det in d.get("detections", [])],
-            tls=TLSResult.from_dict(d["tls"]) if d.get("tls") else None,
+            redirect_chain=[Redirect.from_dict(r) for r in d.get("redirect_chain") or []],
+            headers=[Header.from_dict(h) for h in d.get("headers") or []],
+            cookies=[Cookie.from_dict(c) for c in d.get("cookies") or []],
+            script_urls=d.get("script_urls") or [],
+            certificates=Certificates.from_dict(d["certificates"]) if d.get("certificates") else None,
+            detections=[Detection.from_dict(x) for x in d.get("detections") or []],
+            favicon_url=d.get("favicon_url", ""),
+            favicon_mmh3=d.get("favicon_mmh3", ""),
+            favicon_md5=d.get("favicon_md5", ""),
+            favicon_sha1=d.get("favicon_sha1", ""),
+            favicon_sha256=d.get("favicon_sha256", ""),
+            raw=d.get("raw", ""),
         )
+
+    def header(self, name: str) -> List[str]:
+        """Values of a response header (case-insensitive); [] if absent."""
+        wanted = name.lower()
+        for h in self.headers:
+            if h.name.lower() == wanted:
+                return h.values
+        return []
+
+    def split_headers(self, security_names: frozenset = SECURITY_HEADERS) -> tuple:
+        """
+        Rebuild the v2 split: returns (security_headers, other_headers).
+        v2's exact classification list was never published; pass your own set if needed.
+        """
+        sec: List[Header] = []
+        other: List[Header] = []
+        for h in self.headers:
+            (sec if h.name.lower() in security_names else other).append(h)
+        return sec, other
 
 
 @dataclass
@@ -690,11 +847,24 @@ class ScanResult:
     """
     Per-port scan result. Replaces v2's PortStatus.
     Accessed via: job_report.scan_results[host].ports[port_str]
+
+    v2 PortStatus → v3 ScanResult:
+        new: host, port, proto, checked_at, tags
+        http_info (HTTPResult)            → http_info (UrlResult)
+        certificate (TLSCertificate)      → certificates (Certificates)
+        ssh_collection, rdp_collection, … → collection["ssh"], collection["rdp"], …
+        app_detections                    → detections (flat)
+        checks                            → removed; see HostStatus.checks,
+                                            JobReport.check_results, JobReport.checks_by_port()
+
+    collection is kept as a dict keyed by protocol (39 collectors); each value is
+    that collector's raw JSON object.
     """
     host: str = ""
     port: str = ""
     proto: str = ""
     checked_at: str = ""
+    tags: List[str] = field(default_factory=list)
     open: bool = False
     service: str = ""
     software: str = ""
@@ -720,6 +890,7 @@ class ScanResult:
             port=d.get("port", ""),
             proto=d.get("proto", ""),
             checked_at=d.get("checked_at", ""),
+            tags=d.get("tags") or [],
             open=d.get("open", False),
             service=d.get("service", ""),
             software=d.get("software", ""),
@@ -733,10 +904,10 @@ class ScanResult:
             http=d.get("http", False),
             http_info=UrlResult.from_dict(d["http_info"]) if d.get("http_info") else None,
             certificates=Certificates.from_dict(d["certificates"]) if d.get("certificates") else None,
-            detections=[Detection.from_dict(det) for det in d.get("detections", [])],
-            collection=d.get("collection", {}),
+            detections=[Detection.from_dict(x) for x in d.get("detections") or []],
+            collection=d.get("collection") or {},
             bytes_rcvd=d.get("bytes_rcvd", 0),
-            raw=d.get("raw", []),
+            raw=d.get("raw") or [],
         )
 
 
@@ -762,61 +933,99 @@ class HostMetadata:
 
 
 @dataclass
-class HostStatus:
-    """
-    Per-host result container in a JobReport.
-    Accessed via: job_report.scan_results[host_ip]
-
-    v2: JobReport.results[host] = HostStatus with .ports map of PortStatus
-    v3: JobReport.scan_results[host] = HostStatus with .ports map of ScanResult
-    """
-    metadata: Optional[HostMetadata] = None
-    ports: Dict[str, ScanResult] = field(default_factory=dict)
+class SOA:
+    name: str = ""
+    ns: str = ""
+    mailbox: str = ""
+    serial: int = 0
+    refresh: int = 0
+    retry: int = 0
+    expire: int = 0
+    min_ttl: int = 0
 
     @classmethod
-    def from_dict(cls, d: dict) -> "HostStatus":
-        ports = {}
-        for port_str, port_data in d.get("ports", {}).items():
-            ports[port_str] = ScanResult.from_dict(port_data)
+    def from_dict(cls, d: dict) -> "SOA":
         return cls(
-            metadata=HostMetadata.from_dict(d["metadata"]) if d.get("metadata") else None,
-            ports=ports,
+            name=d.get("name", ""),
+            ns=d.get("ns", ""),
+            mailbox=d.get("mailbox", ""),
+            serial=d.get("serial", 0),
+            refresh=d.get("refresh", 0),
+            retry=d.get("retry", 0),
+            expire=d.get("expire", 0),
+            min_ttl=d.get("min_ttl", 0),
+        )
+
+
+@dataclass
+class DNSResult:
+    """
+    DNS records for a domain (v3 models.DNSResult).
+    v2 → v3: resolver removed; domain, checked_at, tags, caa, ns, srv, soa added.
+    """
+    domain: str = ""
+    checked_at: str = ""
+    tags: List[str] = field(default_factory=list)
+    a: List[str] = field(default_factory=list)
+    aaaa: List[str] = field(default_factory=list)
+    caa: List[str] = field(default_factory=list)
+    cname: List[str] = field(default_factory=list)
+    dmarc: List[str] = field(default_factory=list)
+    mx: List[str] = field(default_factory=list)
+    ns: List[str] = field(default_factory=list)
+    spf: List[str] = field(default_factory=list)
+    srv: List[str] = field(default_factory=list)
+    txt: List[str] = field(default_factory=list)
+    soa: List[SOA] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "DNSResult":
+        return cls(
+            domain=d.get("domain", ""),
+            checked_at=d.get("checked_at", ""),
+            tags=d.get("tags") or [],
+            a=d.get("a") or [],
+            aaaa=d.get("aaaa") or [],
+            caa=d.get("caa") or [],
+            cname=d.get("cname") or [],
+            dmarc=d.get("dmarc") or [],
+            mx=d.get("mx") or [],
+            ns=d.get("ns") or [],
+            spf=d.get("spf") or [],
+            srv=d.get("srv") or [],
+            txt=d.get("txt") or [],
+            soa=[SOA.from_dict(s) for s in d.get("soa") or []],
         )
 
 
 @dataclass
 class DomainInfo:
     """
-    DNS information for a domain.
-    v2 had DomainStatus with {whois, dns, http, tls}.
-    v3 DomainInfo has DNS records directly, with more record types.
+    Everything collected for one domain (v3 models.DomainInfo).
+    Accessed via: job_report.domain_results[domain]
+
+    v2 DomainStatus {whois, dns, http, tls} → v3 DomainInfo:
+        dns   → dns_info (DNSResult)
+        whois → whois (raw dict; NOTE whois["domain"] is now a string and the
+                       old WhoisDomain object moved to whois["domain_info"])
+        http  → http_info + https_info (one UrlResult per scheme)
+        tls   → removed (certificate data is on UrlResult.certificates)
+        new: rdap (raw dict)
     """
-    a: List[str] = field(default_factory=list)
-    aaaa: List[str] = field(default_factory=list)
-    cname: List[str] = field(default_factory=list)
-    mx: List[str] = field(default_factory=list)
-    ns: List[str] = field(default_factory=list)
-    txt: List[str] = field(default_factory=list)
-    soa: List[str] = field(default_factory=list)
-    caa: List[str] = field(default_factory=list)
-    dmarc: List[str] = field(default_factory=list)
-    spf: List[str] = field(default_factory=list)
-    resolver: str = ""
+    dns_info: Optional[DNSResult] = None
+    whois: Dict[str, Any] = field(default_factory=dict)
+    rdap: Dict[str, Any] = field(default_factory=dict)
+    http_info: Optional[UrlResult] = None
+    https_info: Optional[UrlResult] = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "DomainInfo":
         return cls(
-            a=d.get("a", []),
-            aaaa=d.get("aaaa", []),
-            cname=d.get("cname", []),
-            mx=d.get("mx", []),
-            ns=d.get("ns", []),
-            txt=d.get("txt", []),
-            soa=d.get("soa", []),
-            caa=d.get("caa", []),
-            dmarc=d.get("dmarc", []),
-            spf=d.get("spf", []),
-            resolver=d.get("resolver", ""),
+            dns_info=DNSResult.from_dict(d["dns_info"]) if d.get("dns_info") else None,
+            whois=d.get("whois") or {},
+            rdap=d.get("rdap") or {},
+            http_info=UrlResult.from_dict(d["http_info"]) if d.get("http_info") else None,
+            https_info=UrlResult.from_dict(d["https_info"]) if d.get("https_info") else None,
         )
 
 
@@ -890,6 +1099,32 @@ class CheckResult:
         )
 
 
+@dataclass
+class HostStatus:
+    """
+    Per-host result container in a JobReport.
+    Accessed via: job_report.scan_results[host_ip]
+
+    v2: JobReport.results[host] = HostStatus with .ports map of PortStatus
+    v3: JobReport.scan_results[host] = HostStatus with .ports map of ScanResult
+    New in v3: tags (rule tags from this host's ports) and checks (check matches
+    for this host — checks are no longer attached to individual ports).
+    """
+    metadata: Optional[HostMetadata] = None
+    tags: List[str] = field(default_factory=list)
+    ports: Dict[str, ScanResult] = field(default_factory=dict)
+    checks: List[CheckResult] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "HostStatus":
+        return cls(
+            metadata=HostMetadata.from_dict(d["metadata"]) if d.get("metadata") else None,
+            tags=d.get("tags") or [],
+            ports={p: ScanResult.from_dict(v) for p, v in (d.get("ports") or {}).items()},
+            checks=[CheckResult.from_dict(c) for c in d.get("checks") or []],
+        )
+
+
 # ---------------------------------------------------------------------------
 # JobReport
 # ---------------------------------------------------------------------------
@@ -899,7 +1134,11 @@ class JobReport:
     """
     Full scan results from GET /v3/scans/{job_id}/results.
 
-    NOTE: This endpoint returns the report directly (NOT wrapped in DocumentResponse).
+    The endpoint wraps the report like every other single resource:
+    { "data": JobReport, "links": {...} }. EffluxV3Client.get_scan_results()
+    returns a DocumentResponse whose .data is this object.
+
+    The endpoint returns 404 until the job's status is "complete".
 
     v2 → v3 field renames:
         results       → scan_results   (map: host_ip → HostStatus)
@@ -907,8 +1146,12 @@ class JobReport:
         url_info      → url_results    (was array<HTTPResult>, now map<url → UrlResult>)
 
     New in v3:
-        check_results  — top-level array of all check matches across all hosts
-                         Includes context fields (host, port, scheme, url, check_id, event_id)
+        check_results  — top-level array of check matches. Each carries context
+                         (host, ip, port, scheme, url, path, check_id, event_id).
+                         Use checks_by_port() to rebuild the v2 per-port view.
+
+    Without details=true, the server strips the request echo arrays (hosts,
+    host_lists, ports, port_lists, domains, urls, cves) and UrlResult.raw.
     """
     job_id: str = ""
     user_id: str = ""
@@ -947,18 +1190,42 @@ class JobReport:
     url_results: Dict[str, UrlResult] = field(default_factory=dict)
     check_results: List[CheckResult] = field(default_factory=list)
 
+    def checks_by_port(self) -> Dict[tuple, List[CheckResult]]:
+        """
+        Group check results by (host, port), like v2's PortStatus.checks.
+
+        Collects from every HostStatus.checks and from check_results,
+        de-duplicating by event_id. Checks without a port are keyed (host, "").
+        """
+        grouped: Dict[tuple, List[CheckResult]] = {}
+        seen: set = set()
+
+        def add(c: CheckResult, fallback_host: str) -> None:
+            key = c.event_id or id(c)
+            if key in seen:
+                return
+            seen.add(key)
+            grouped.setdefault((c.host or c.ip or fallback_host, c.port), []).append(c)
+
+        for host, hs in self.scan_results.items():
+            for c in hs.checks:
+                add(c, host)
+        for c in self.check_results:
+            add(c, "")
+        return grouped
+
     @classmethod
     def from_dict(cls, d: dict) -> "JobReport":
         scan_results = {}
-        for host, host_data in d.get("scan_results", {}).items():
+        for host, host_data in (d.get("scan_results") or {}).items():
             scan_results[host] = HostStatus.from_dict(host_data)
 
         domain_results = {}
-        for domain, domain_data in d.get("domain_results", {}).items():
+        for domain, domain_data in (d.get("domain_results") or {}).items():
             domain_results[domain] = DomainInfo.from_dict(domain_data)
 
         url_results = {}
-        for url, url_data in d.get("url_results", {}).items():
+        for url, url_data in (d.get("url_results") or {}).items():
             url_results[url] = UrlResult.from_dict(url_data)
 
         return cls(
@@ -997,7 +1264,7 @@ class JobReport:
             scan_results=scan_results,
             domain_results=domain_results,
             url_results=url_results,
-            check_results=[CheckResult.from_dict(c) for c in d.get("check_results", [])],
+            check_results=[CheckResult.from_dict(c) for c in d.get("check_results") or []],
         )
 
 

@@ -52,6 +52,9 @@ def example_create_scan():
     # status = result["status"]
 
     # --- v3 ---
+    # WARNING: v3 silently ignores unknown fields. A leftover "checks_opts" or a
+    # flat "success_url" callback is dropped with no error. An integer
+    # "fingerprint" fails with 400 "invalid message body".
     response = client.create_scan(ScanRequest(
         hosts=["10.0.0.0/24"],
         ports=["80", "443", "8080"],
@@ -172,13 +175,14 @@ def example_get_job_status(job_id: str):
     print(f"  Accessible ports: {job.accessible_port_count}")
     print(f"  Checks matched: {job.checks_matched}")
 
-    # Convenience properties
-    if job.is_running:
+    # Status values: "pending", "in progress" (note the space), "complete",
+    # "canceled", "rejected". Convenience properties:
+    if job.is_running:          # pending / in progress
         print("  Still running...")
     elif job.is_complete:
         print("  Done!")
-    elif job.is_failed:
-        print("  Failed.")
+    elif job.is_failed:         # canceled / rejected
+        print(f"  Ended without results: {job.status}")
 
 
 # =============================================================================
@@ -206,47 +210,101 @@ def example_get_results(job_id: str):
     #     print(check["check_name"])
 
     # --- v3 ---
-    # Step 1: Confirm job is complete (optional but recommended)
+    # Step 1: Confirm job is complete. /results returns 404 until it is.
     job_response = client.get_scan(job_id)
     job = job_response.data
     if not job.is_complete:
         print(f"Job not complete yet: {job.status}")
         return
 
-    # Step 2: Fetch results from dedicated endpoint
-    report = client.get_scan_results(job_id)
+    # Step 2: Fetch results from the dedicated endpoint. Like every v3 resource,
+    # the report is wrapped: take .data.
+    report = client.get_scan_results(job_id).data
 
-    # scan_results replaces "results" — same structure otherwise
+    # scan_results replaces "results" — same host → ports map shape
     for host, host_status in report.scan_results.items():
         if host_status.metadata:
             print(f"\nHost {host} ({host_status.metadata.country}, ASN: {host_status.metadata.asn})")
 
         for port_str, scan_result in host_status.ports.items():
             if scan_result.open:
-                print(f"  {port_str}/tcp: {scan_result.service} {scan_result.software} {scan_result.version}")
-                if scan_result.tls:
-                    print(f"    TLS: yes")
-                if scan_result.http_info:
-                    print(f"    HTTP status: {scan_result.http_info.status_code}")
+                print(f"  {port_str}/{scan_result.proto or 'tcp'}: {scan_result.service} {scan_result.software} {scan_result.version}")
 
-    # domain_results replaces "domain_info"
+    # domain_results replaces "domain_info". DNS moved under dns_info.
     for domain, domain_info in report.domain_results.items():
         print(f"\nDomain {domain}:")
-        if domain_info.a:
-            print(f"  A: {domain_info.a}")
-        if domain_info.mx:
-            print(f"  MX: {domain_info.mx}")
+        if domain_info.dns_info:
+            print(f"  A: {domain_info.dns_info.a}")
+            print(f"  MX: {domain_info.dns_info.mx}")
+        if domain_info.https_info:
+            print(f"  HTTPS: {domain_info.https_info.url}")
 
-    # url_results replaces "url_info" — now a dict (not an array!)
-    for url, url_result in report.url_results.items():   # iterate dict items, not an array
-        print(f"\nURL {url}: status {url_result.status_code}")
+    # url_results replaces "url_info" — now a dict keyed by URL (not an array)
+    for url, url_result in report.url_results.items():
+        print(f"\nURL {url}: remote {url_result.remote_host}:{url_result.remote_port}")
 
-    # check_results is new in v3 — top-level array across all hosts
+    # check_results is new in v3 — checks are no longer attached to ports
     for check in report.check_results:
         print(f"\nCheck match: [{check.severity}] {check.check_name}")
         print(f"  Host: {check.host}:{check.port}")    # context fields new in v3
         print(f"  CVEs: {check.cve_id}")
         print(f"  CVSS: {check.cvss_score}")
+
+
+# =============================================================================
+# 5b. ONE PORT IN DETAIL: PortStatus → ScanResult, HTTPResult → UrlResult
+# =============================================================================
+
+def example_port_detail(job_id: str, host: str, port: str = "443"):
+    """Reading everything for one port, with the v2 field it replaces."""
+
+    # --- v2 ---
+    # ps = result["results"][host]["ports"][port]          # PortStatus
+    # ps["certificate"]["subject_common_name"]             # flat TLSCertificate
+    # ps["ssh_collection"]["pub_key"]                      # one field per protocol
+    # ps["app_detections"][0]["detections"][0]["version"]  # grouped by URL
+    # ps["checks"]                                         # checks on the port
+    # http = ps["http_info"]                               # HTTPResult
+    # http["requested_url"], http["security_headers"], http["other_headers"]
+
+    # --- v3 ---
+    report = client.get_scan_results(job_id).data
+    sr = report.scan_results[host].ports[port]               # ScanResult
+    print(f"{sr.host}:{sr.port}/{sr.proto} checked {sr.checked_at} open={sr.open}")
+
+    # certificate → certificates {certificate, chain, chain_valid, ocsp_staple, tls_version}
+    if sr.certificates and sr.certificates.certificate:
+        leaf = sr.certificates.certificate
+        print(f"  cert subject={leaf.subject!r} issuer={leaf.issuer!r}")   # one string each now
+        print(f"  not_after={leaf.not_after} (integer)  chain_valid={sr.certificates.chain_valid}")
+        print(f"  TLS version: {sr.certificates.tls_version}")
+
+    # ssh_collection etc. → collection["ssh"] etc. (SSH fields renamed: pub_key → host_key)
+    ssh = sr.collection.get("ssh")
+    if ssh:
+        print(f"  SSH host key: {ssh.get('host_key_type')} {ssh.get('host_key_fingerprint')}")
+
+    # app_detections → detections (flat; name/info/cpe/website/categories, no version)
+    for det in sr.detections:
+        print(f"  detected: {det.name} {det.cpe}")
+
+    # checks are no longer on the port — rebuild the per-port list
+    for check in report.checks_by_port().get((host, port), []):
+        print(f"  check: [{check.severity}] {check.check_name}")
+
+    # http_info: HTTPResult → UrlResult
+    http = sr.http_info
+    if http:
+        print(f"  URL: {http.url} (was requested_url) scheme={http.url_scheme} path={http.url_path}")
+        security, other = http.split_headers()        # v2 security_headers / other_headers
+        print(f"  security headers: {[h.name for h in security]}")
+        print(f"  HSTS: {http.header('strict-transport-security')}")
+        for hop in http.redirect_chain:               # status codes live on the hops
+            print(f"  redirect {hop.status_code} → {hop.location} via {hop.remote_host}:{hop.remote_port}")
+        for cookie in http.cookies:                   # new
+            print(f"  cookie {cookie.name} secure={cookie.secure} http_only={cookie.http_only}")
+        if http.favicon_mmh3:                         # new
+            print(f"  favicon mmh3: {http.favicon_mmh3}")
 
 
 # =============================================================================
@@ -259,7 +317,7 @@ def example_get_summary(job_id: str):
     New in v3 — no equivalent existed in v2.
     Use this when you need counts/lists, not per-host detail.
     """
-    summary = client.get_scan_summary(job_id)
+    summary = client.get_scan_summary(job_id).data   # wrapped like every v3 resource
 
     print(f"Job {summary.job_id} summary:")
     print(f"  Accessible hosts: {summary.accessible_host_count}")
@@ -268,6 +326,7 @@ def example_get_summary(job_id: str):
     print(f"  Open ports: {summary.ports}")
     print(f"  Services: {summary.services}")
     print(f"  Software: {summary.software}")
+    print(f"  Cert fingerprints: {summary.certs}")
     print(f"  ASNs: {summary.asns}")
     print(f"  Countries: {summary.hosts_per_country}")
 
@@ -317,7 +376,7 @@ def example_repeat_job(job_id: str):
     # --- v3 ---
     # POST /scans/{job_id}/repeat   <-- path changed
     response = client.repeat_scan(job_id)
-    # Returns HTTP 201 + DocumentResponse (access .data)
+    # Returns DocumentResponse (access .data). HTTP 200, although the spec says 201.
     new_job_id = response.data.job_id
     print(f"Repeated as new job: {new_job_id}")
 
@@ -340,14 +399,15 @@ def example_polling(job_id: str):
 
     # --- v3: poll status endpoint ---
     job = client.wait_for_job(job_id, poll_interval=5.0, timeout=3600.0)
-    print(f"Job complete: {job.status}")
+    print(f"Job finished: {job.status}")   # complete, canceled, or rejected
 
-    # Or submit and wait in one call:
+    # Or submit and wait in one call (report is None unless the job completed):
     job, report = client.run_scan_and_wait(ScanRequest(
         hosts=["192.168.1.0/24"],
         ports=["22", "80", "443"],
     ))
-    print(f"Found {report.accessible_host_count} hosts with {report.accessible_port_count} open ports")
+    if report:
+        print(f"Found {report.accessible_host_count} hosts with {report.accessible_port_count} open ports")
 
 
 # =============================================================================
@@ -370,6 +430,7 @@ def example_error_handling():
     # }
 
     from efflux_v3.exceptions import (
+        EffluxJobRejectedError,
         EffluxValidationError,
         EffluxRateLimitError,
         EffluxNotFoundError,
@@ -379,6 +440,11 @@ def example_error_handling():
     try:
         # Intentionally invalid request
         client.create_scan(ScanRequest(hosts=["not-a-valid-cidr!!!"], ports=[]))
+    except EffluxJobRejectedError as e:
+        # 400 with a bare RequestResults body (status "rejected"), not a Problem.
+        # Must come before EffluxValidationError, which it subclasses.
+        print(f"Job rejected: {e.errors}")
+        print(f"  Rejected inputs: {e.rejected}")
     except EffluxValidationError as e:
         # 400 — read detail (not "error" key like in v2)
         print(f"Validation failed: {e.detail}")
@@ -448,6 +514,9 @@ if __name__ == "__main__":
         import time
         job = client.wait_for_job(job_id, poll_interval=10.0, timeout=300.0)
         print(f"Job finished: {job.status}")
+
+        if not job.is_complete:
+            raise SystemExit(f"Job ended {job.status!r}; no results to fetch")
 
         print("\n=== Full results ===")
         example_get_results(job_id)

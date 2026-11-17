@@ -60,11 +60,27 @@ export interface RateLimit {
 // Callback Types
 // ---------------------------------------------------------------------------
 
-/** Request body callback — used when creating scans/schedules/surveys/captures. */
+/**
+ * One callback phase in a request. Set either url (+ optional method) or
+ * callback_id (a saved webhook from POST /v3/webhooks) — not both.
+ * "$job_id" in url is replaced with the job ID.
+ */
+export type CallbackTarget =
+  | { url: string; method?: "POST" | "GET" | string; callback_id?: never }
+  | { callback_id: string; url?: never; method?: never };
+
+/**
+ * Request body callback — used when creating scans/schedules/surveys/captures.
+ *
+ * WARNING: the v3 server ignores unknown fields, so a v2-style flat callback
+ * (start_url, success_url, …) is silently dropped and no callback fires.
+ */
 export interface CallbackRequest {
-  start?: { url: string; method?: string };
-  success?: { url: string; method?: string };
-  fail?: { url: string; method?: string };
+  start?: CallbackTarget;
+  success?: CallbackTarget;
+  fail?: CallbackTarget;
+  /** false skips your saved callback preferences for this job; omit to follow them. */
+  use_defaults?: boolean;
 }
 
 /** Single webhook delivery attempt record. */
@@ -77,10 +93,14 @@ export interface CallbackAttempt {
 
 /** Status of a single callback event, including delivery history. */
 export interface CallbackEventStatus {
-  url: string;
-  method: string;
-  attempts: CallbackAttempt[];
-  complete: boolean;
+  url?: string;
+  method?: string;
+  callback_id?: string;
+  delivery_id?: string;
+  attempts?: CallbackAttempt[];
+  complete?: boolean;
+  /** "request" if set on the scan request, "preference" if filled from saved preferences. */
+  source?: "request" | "preference" | string;
 }
 
 /**
@@ -108,11 +128,17 @@ export interface Callback {
  *
  * Removed fields (no longer available in v3):
  *   include_ids, exclude_ids, limit_to_ids, exclude_targets, limit_to_targets
+ *
+ * WARNING: the v3 server ignores unknown fields, so a leftover `checks_opts`
+ * key is silently dropped and checks run unfiltered.
  */
+export type Severity = "info" | "low" | "medium" | "high" | "critical";
+
 export interface ChecksOptions {
   cves_only?: boolean;
-  min_severity?: "info" | "low" | "medium" | "high" | "critical" | string;
-  max_severity?: "info" | "low" | "medium" | "high" | "critical" | string;
+  /** Must not be above max_severity. */
+  min_severity?: Severity;
+  max_severity?: Severity;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +247,8 @@ export interface RequestResults {
   description: string;
   created_at: string;
   status: string;
-  /** Non-fatal issues encountered during job creation. New in v3. */
-  errors: string[];
+  /** Reasons a job was rejected or inputs were dropped. New in v3. */
+  errors?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -279,164 +305,272 @@ export interface Job {
   callback?: Callback;
   tags: string[];
   description: string;
-  /** "pending" | "running" | "complete" | "failed" | "canceled" */
-  status: string;
+  status: JobStatus | string;
 }
+
+/** Job status values sent by the v3 server. Note the space in "in progress". */
+export type JobStatus = "pending" | "in progress" | "complete" | "canceled" | "rejected";
+
+export const JOB_STATUS = {
+  PENDING: "pending",
+  IN_PROGRESS: "in progress",
+  COMPLETE: "complete",
+  CANCELED: "canceled",
+  REJECTED: "rejected",
+  /** Only returned by POST /v3/scans/eval. */
+  ACCEPTABLE: "acceptable",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Result Types
+//
+// Field lists match the v3 server models (empire-models v1.20261022.1).
+// The server omits zero values (false, "", 0, empty arrays/maps), so most
+// fields below are optional — always read them with a fallback.
 // ---------------------------------------------------------------------------
-
-export interface Redirect {
-  status_code: number;
-  location: string;
-}
 
 export interface Header {
   name: string;
-  values: string[];
-}
-
-export interface Cookie {
-  name: string;
-  value: string;
-  domain: string;
-  path: string;
-  secure: boolean;
-  http_only: boolean;
-  same_site: string;
-  expires: string;
-}
-
-/** Wappalyzer-style application detection. */
-export interface Detection {
-  name: string;
-  matches: string;
-  version: string;
-  url: string;
-}
-
-export interface TLSResult {
-  selected_protocol: string;
-  selected_cipher: string;
-  protocols: string[];
-  mutual_tls: boolean;
-  jarm: string;
-  compression: boolean;
-  session_id_resumption: boolean;
-  session_ticket_resumption: boolean;
-  secure_renegotiation: boolean;
-  session_renegotiation: boolean;
-  tls_fallback: boolean;
-  tls_early_data: boolean;
-  certificate?: Record<string, unknown>;
-}
-
-export interface Certificate {
-  fingerprint_md5: string;
-  fingerprint_sha1: string;
-  fingerprint_sha256: string;
-  version: string;
-  serial_number: string;
-  not_before: string;
-  not_after: string;
-  issuer_common_name: string;
-  issuer_organization: string;
-  issuer_country: string;
-  subject_common_name: string;
-  subject_organization: string;
-  subject_country: string;
+  values?: string[];
 }
 
 /**
- * HTTP/HTTPS result for a URL or port.
- * Replaces HTTPResult from v2.
- * In JobReport, url_results is Record<url, UrlResult> (v2 url_info was HTTPResult[]).
+ * One X.509 certificate.
+ *
+ * v2 TLSCertificate → v3 Certificate:
+ *   fingerprint_md5/sha1/sha256, serial_number → unchanged
+ *   not_before / not_after                     → now numbers (were strings)
+ *   issuer_* (9 fields)                        → issuer (one string)
+ *   subject_* (9 fields)                       → subject (one string)
+ *   version                                    → removed
+ */
+export interface Certificate {
+  serial_number?: string;
+  issuer?: string;
+  subject?: string;
+  not_before?: number;
+  not_after?: number;
+  key_usage?: string[];
+  ext_key_usage?: string[];
+  signature_algorithm?: string;
+  signature_valid?: boolean;
+  self_signed?: boolean;
+  is_ca?: boolean;
+  is_ev?: boolean;
+  is_precert?: boolean;
+  public_key?: string;
+  public_key_algorithm?: string;
+  ocsp_servers?: string[];
+  ocsp_response?: string;
+  fingerprint_md5?: string;
+  fingerprint_sha1?: string;
+  fingerprint_sha256?: string;
+  fingerprint_spki?: string;
+  fingerprint_spki_subject?: string;
+  fingerprint_tbs_certificate?: string;
+}
+
+/**
+ * TLS certificate info for a port, URL, or redirect hop.
+ * Replaces v2 PortStatus.certificate (a single flat TLSCertificate).
+ */
+export interface Certificates {
+  /** The leaf certificate. */
+  certificate?: Certificate;
+  chain?: Certificate[];
+  chain_valid?: boolean;
+  ocsp_staple?: boolean;
+  /** Negotiated TLS version. */
+  tls_version?: string;
+}
+
+/** One hop in UrlResult.redirect_chain. v3 adds remote_host/port, headers, script_urls, certificates. */
+export interface Redirect {
+  status_code?: number;
+  location?: string;
+  remote_host?: string;
+  remote_port?: string;
+  headers?: Header[];
+  script_urls?: string[];
+  certificates?: Certificates;
+}
+
+/** A cookie set by an HTTP response. path, domain, max_age, raw_cookie are always present. */
+export interface Cookie {
+  name?: string;
+  value?: string;
+  path: string;
+  domain: string;
+  expires?: string;
+  max_age: number;
+  secure?: boolean;
+  http_only?: boolean;
+  raw_cookie: string;
+}
+
+/**
+ * A technology detection.
+ * v2: app_detections: [{ url, detections: [{ name, matches, version, url }] }]
+ * v3: detections: [{ name, info, cpe, website, categories }] — flat, no version/matches.
+ */
+export interface Detection {
+  name?: string;
+  info?: string;
+  cpe?: string;
+  website?: string;
+  categories?: string[];
+}
+
+/**
+ * HTTP(S) result for a URL, a port, or a domain. Replaces v2 HTTPResult.
+ *
+ * v2 HTTPResult → v3 UrlResult:
+ *   requested_url                    → url (also the key in JobReport.url_results)
+ *   security_headers + other_headers → headers (one list; see splitHeaders())
+ *   redirect_chain                   → redirect_chain (hops carry more data)
+ *   new: url_* parts, checked_at, tags, cookies, certificates, detections,
+ *        favicon_* hashes, raw (only with details=true)
+ *
+ * There is no top-level status code; status codes are on redirect_chain hops.
  */
 export interface UrlResult {
-  requested_url: string;
-  remote_host: string;
-  remote_port: string;
-  supports_http2: boolean;
-  supports_http3: boolean;
-  secure_redirect: boolean;
-  status_code: number;
-  redirect_chain: Redirect[];
-  security_headers: Header[];
-  other_headers: Header[];
-  script_urls: string[];
-  cookies: Cookie[];
-  detections: Detection[];
-  tls?: TLSResult;
+  url?: string;
+  url_host?: string;
+  url_port?: string;
+  url_domain?: string;
+  url_scheme?: string;
+  url_path?: string;
+  url_query?: string;
+  checked_at?: string;
+  tags?: string[];
+  remote_host?: string;
+  remote_port?: string;
+  supports_http2?: boolean;
+  supports_http3?: boolean;
+  secure_redirect?: boolean;
+  redirect_chain?: Redirect[];
+  headers?: Header[];
+  cookies?: Cookie[];
+  script_urls?: string[];
+  certificates?: Certificates;
+  detections?: Detection[];
+  favicon_url?: string;
+  favicon_mmh3?: string;
+  favicon_md5?: string;
+  favicon_sha1?: string;
+  favicon_sha256?: string;
+  /** Raw response. Stripped from /results unless details=true. */
+  raw?: string;
 }
 
 /**
  * Per-port scan result. Replaces v2's PortStatus.
- * Accessed via: jobReport.scan_results[host].ports[portStr]
+ * Accessed via: jobReport.scan_results?.[host]?.ports?.[portStr]
+ *
+ * v2 PortStatus → v3 ScanResult:
+ *   new: host, port, proto, checked_at, tags
+ *   http_info (HTTPResult)            → http_info (UrlResult)
+ *   certificate (TLSCertificate)      → certificates (Certificates)
+ *   ssh_collection, rdp_collection, … → collection.ssh, collection.rdp, …
+ *   app_detections                    → detections (flat)
+ *   checks                            → removed; see HostStatus.checks,
+ *                                       JobReport.check_results, checksByPort()
  */
 export interface ScanResult {
-  host: string;
-  port: string;
-  proto: string;
-  checked_at: string;
-  open: boolean;
-  service: string;
-  software: string;
-  version: string;
-  info: string;
-  host_name: string;
-  os: string;
-  device_type: string;
-  cpe: string;
-  tls: boolean;
-  http: boolean;
+  host?: string;
+  port?: string;
+  proto?: string;
+  checked_at?: string;
+  tags?: string[];
+  open?: boolean;
+  service?: string;
+  software?: string;
+  version?: string;
+  info?: string;
+  host_name?: string;
+  os?: string;
+  device_type?: string;
+  cpe?: string;
+  tls?: boolean;
+  http?: boolean;
   http_info?: UrlResult;
-  certificates?: Record<string, unknown>;
-  detections: Detection[];
-  /** Protocol-specific collected data (SSH, SMB, RDP, MongoDB, Redis, etc.) */
-  collection: Record<string, unknown>;
-  bytes_rcvd: number;
-  /** Raw response data — only populated when ?details=true */
-  raw: string[];
+  certificates?: Certificates;
+  detections?: Detection[];
+  /** Protocol-specific data keyed by collector (ssh, smb, rdp, mongodb, redis, modbus, …; 39 in all). */
+  collection?: Record<string, Record<string, unknown>>;
+  bytes_rcvd?: number;
+  raw?: string[];
 }
 
 export interface HostMetadata {
-  asn: string;
-  as_org: string;
-  country: string;
-  provider: string;
-  tor: boolean;
-  info: string;
+  asn?: string;
+  as_org?: string;
+  country?: string;
+  provider?: string;
+  tor?: boolean;
+  info?: string;
 }
 
 /**
  * Per-host result container.
- * v2: JobReport.results[host] — same structure
- * v3: JobReport.scan_results[host] — field renamed
+ * v2: JobReport.results[host]      — { metadata, ports: Record<port, PortStatus> }
+ * v3: JobReport.scan_results[host] — adds tags and checks (checks moved off the ports)
  */
 export interface HostStatus {
   metadata?: HostMetadata;
+  /** Rule tags gathered from this host's ports. */
+  tags?: string[];
   /** Map of port number string to scan result. */
-  ports: Record<string, ScanResult>;
+  ports?: Record<string, ScanResult>;
+  /** Check matches for this host. */
+  checks?: CheckResult[];
+}
+
+export interface SOA {
+  name?: string;
+  ns?: string;
+  mailbox?: string;
+  serial?: number;
+  refresh?: number;
+  retry?: number;
+  expire?: number;
+  min_ttl?: number;
+}
+
+/** DNS records. v2 → v3: resolver removed; domain, checked_at, tags, caa, ns, srv, soa added. */
+export interface DNSResult {
+  domain?: string;
+  checked_at?: string;
+  tags?: string[];
+  a?: string[];
+  aaaa?: string[];
+  caa?: string[];
+  cname?: string[];
+  dmarc?: string[];
+  mx?: string[];
+  ns?: string[];
+  spf?: string[];
+  srv?: string[];
+  txt?: string[];
+  soa?: SOA[];
 }
 
 /**
- * DNS information for a domain.
- * v2 had DomainStatus with {whois, dns, http, tls}.
- * v3 DomainInfo has DNS records directly, with more record types.
+ * Everything collected for one domain. Accessed via jobReport.domain_results?.[domain].
+ *
+ * v2 DomainStatus { whois, dns, http, tls } → v3 DomainInfo:
+ *   dns   → dns_info
+ *   whois → whois (NOTE: whois.domain is now a string; the old object moved to whois.domain_info)
+ *   http  → http_info + https_info (one UrlResult per scheme)
+ *   tls   → removed (certificate data is on UrlResult.certificates)
+ *   new: rdap
  */
 export interface DomainInfo {
-  a: string[];
-  aaaa: string[];
-  cname: string[];
-  mx: string[];
-  ns: string[];
-  txt: string[];
-  soa: string[];
-  caa: string[];
-  dmarc: string[];
-  spf: string[];
-  resolver: string;
+  dns_info?: DNSResult;
+  whois?: Record<string, unknown>;
+  rdap?: Record<string, unknown>;
+  http_info?: UrlResult;
+  https_info?: UrlResult;
 }
 
 /**
@@ -444,37 +578,39 @@ export interface DomainInfo {
  *
  * New fields in v3 (context for where the check matched):
  *   type, host, port, scheme, url, path, ip, check_id, event_id
+ *
+ * Only `type` is always present; the server omits empty fields.
  */
 export interface CheckResult {
   // Context fields — new in v3
   type: string;
-  host: string;
-  port: string;
-  scheme: string;
-  url: string;
-  path: string;
-  ip: string;
-  check_id: string;
-  event_id: string;
+  host?: string;
+  port?: string;
+  scheme?: string;
+  url?: string;
+  path?: string;
+  ip?: string;
+  check_id?: string;
+  event_id?: string;
   // Core fields — same as v2
-  matched: string;
-  check_name: string;
-  description: string;
-  references: string[];
-  check_type: string;
-  severity: string;
-  extract_name: string;
-  extractions: string[];
-  cve_id: string[];
-  cwe_id: string[];
-  cvss_metrics: string;
-  cvss_score: number;
-  epss_score: number;
-  cpe: string;
-  interaction_request: string;
-  interaction_addr: string;
-  interaction_proto: string;
-  interaction_timestamp: string;
+  matched?: string;
+  check_name?: string;
+  description?: string;
+  references?: string[];
+  check_type?: string;
+  severity?: string;
+  extract_name?: string;
+  extractions?: string[];
+  cve_id?: string[];
+  cwe_id?: string[];
+  cvss_metrics?: string;
+  cvss_score?: number;
+  epss_score?: number;
+  cpe?: string;
+  interaction_request?: string;
+  interaction_addr?: string;
+  interaction_proto?: string;
+  interaction_timestamp?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,7 +620,10 @@ export interface CheckResult {
 /**
  * Full scan results from GET /v3/scans/{job_id}/results.
  *
- * NOTE: This endpoint returns JobReport directly (NOT wrapped in DocumentResponse).
+ * The server wraps it like every other single resource: DocumentResponse<JobReport>.
+ * The endpoint returns 404 until the job's status is "complete".
+ * Without details=true, the request echo arrays (hosts, host_lists, ports,
+ * port_lists, domains, urls, cves) and UrlResult.raw are stripped.
  *
  * v2 → v3 field renames:
  *   results      → scan_results   (Record<host_ip, HostStatus>)
@@ -496,16 +635,16 @@ export interface CheckResult {
  */
 export interface JobReport {
   job_id: string;
-  user_id: string;
-  schedule_id: string;
+  user_id?: string;
+  schedule_id?: string;
   proto: string;
-  hosts: string[];
-  host_lists: string[];
-  ports: string[];
-  port_lists: string[];
-  domains: string[];
-  urls: string[];
-  cves: string[];
+  hosts?: string[];
+  host_lists?: string[];
+  ports?: string[];
+  port_lists?: string[];
+  domains?: string[];
+  urls?: string[];
+  cves?: string[];
   host_count: number;
   port_count: number;
   domain_count: number;
@@ -514,11 +653,11 @@ export interface JobReport {
   request_count: number;
   fingerprint: boolean;
   checks: boolean;
-  tags: string[];
-  description: string;
+  tags?: string[];
+  description?: string;
   created_at: string;
-  started_at: string;
-  completed_at: string;
+  started_at?: string;
+  completed_at?: string;
   accessible_host_count: number;
   accessible_port_count: number;
   accessible_domain_count: number;
@@ -531,23 +670,24 @@ export interface JobReport {
    * Map of host IP → HostStatus (with per-port results).
    * v2 field name: results
    */
-  scan_results: Record<string, HostStatus>;
+  scan_results?: Record<string, HostStatus>;
   /**
    * Map of domain → DomainInfo (DNS records).
    * v2 field name: domain_info
    */
-  domain_results: Record<string, DomainInfo>;
+  domain_results?: Record<string, DomainInfo>;
   /**
    * Map of URL string → UrlResult (HTTP details).
    * v2 field name: url_info — was an array! Now a map.
    */
-  url_results: Record<string, UrlResult>;
+  url_results?: Record<string, UrlResult>;
   /**
    * Top-level array of all vulnerability check matches across all hosts.
    * New in v3. Includes context fields (host, port, scheme, check_id, event_id).
-   * In v2, checks were nested inside each PortStatus.
+   * In v2, checks were nested inside each PortStatus. Use checksByPort() to
+   * rebuild that view.
    */
-  check_results: CheckResult[];
+  check_results?: CheckResult[];
 }
 
 // ---------------------------------------------------------------------------
@@ -560,29 +700,30 @@ export interface JobReport {
  */
 export interface JobSummary {
   job_id: string;
-  user_id: string;
+  user_id?: string;
   created_at: string;
-  started_at: string;
-  completed_at: string;
+  started_at?: string;
+  completed_at?: string;
   accessible_host_count: number;
   accessible_port_count: number;
-  accessible_domain_count: number;
+  /** Not populated by the current server. */
+  accessible_domain_count?: number;
   accessible_url_count: number;
-  checks_matched: number;
+  checks_matched?: number;
   /** Distinct open port numbers across all hosts. */
-  ports: string[];
+  ports?: string[];
   /** Distinct detected service names. */
-  services: string[];
+  services?: string[];
   /** Distinct software/version strings. */
-  software: string[];
-  /** Certificate SHA256 fingerprints. */
-  certs: string[];
-  /** Public key fingerprints. */
-  keys: string[];
+  software?: string[];
+  /** Distinct leaf-certificate SHA256 fingerprints across ports. */
+  certs?: string[];
+  /** Public key fingerprints. Not populated by the current server. */
+  keys?: string[];
   /** ASN strings. */
-  asns: string[];
+  asns?: string[];
   /** Host count per country code. */
-  hosts_per_country: Record<string, number>;
+  hosts_per_country?: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -592,27 +733,49 @@ export interface JobSummary {
 /** Received when a WebSocket connection is established. */
 export interface WSConnectedMessage {
   type: "connected";
-  job_id: string;
-  scope: "job" | "all";
+  job_id?: string;
+  scope: string;
   protocol: string;
 }
 
-/** Received for each scan/dns/url/check event during a live job stream. */
-export interface WSScanEventMessage {
-  type: "scan" | "dns" | "url" | "check";
+/**
+ * `data` of a "scan" stream event. The port result is in `status`.
+ * (Stream events are not the same shape as JobReport port entries.)
+ */
+export interface ScanResultExtended {
+  host?: string;
+  port?: string;
+  proto?: string;
+  first_seen?: string;
+  last_seen?: string;
+  host_metadata?: HostMetadata;
+  tags?: string[];
+  status?: ScanResult;
+}
+
+interface WSEventBase {
   job_id: string;
-  data: ScanResult | DomainInfo | UrlResult | CheckResult;
+  tenant_id?: string;
+  user_id?: string;
   pipeline?: string;
   region?: string;
 }
 
-/** Received on the status stream when a job's status changes. */
+/** Live result events. Discriminate on `type` to get the right `data` shape. */
+export type WSScanEventMessage =
+  | (WSEventBase & { type: "scan"; data: ScanResultExtended })
+  | (WSEventBase & { type: "url"; data: UrlResult })
+  | (WSEventBase & { type: "dns"; data: DNSResult })
+  | (WSEventBase & { type: "check"; data: CheckResult });
+
+/** Received on the status stream when a resource's status changes. */
 export interface WSStatusChangeMessage {
   type: "job" | "capture" | "task" | "survey" | "permutation";
   id: string;
   status: string;
   time: string;
   user_id: string;
+  tenant_id?: string;
 }
 
 export type WSMessage = WSConnectedMessage | WSScanEventMessage | WSStatusChangeMessage;

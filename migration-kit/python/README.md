@@ -23,12 +23,13 @@ response = client.create_scan(ScanRequest(
 ))
 job_id = response.data.job_id
 
-# Wait for completion (polls every 5s, timeout 1 hour)
+# Wait until the job leaves "pending" / "in progress" (polls every 5s, timeout 1 hour)
 job = client.wait_for_job(job_id)
-print(f"Done: {job.status}")
+if not job.is_complete:                      # "canceled" or "rejected"
+    raise SystemExit(f"Job ended {job.status}")
 
-# Get results
-report = client.get_scan_results(job_id)
+# Get results — wrapped like every v3 resource, so take .data
+report = client.get_scan_results(job_id).data
 for host, host_status in report.scan_results.items():
     for port, result in host_status.ports.items():
         if result.open:
@@ -43,9 +44,15 @@ for host, host_status in report.scan_results.items():
 | `checks_opts={...}` | → `checks_options={...}` (renamed, simplified) |
 | `callback.start_url` | → `callback.start.url` (nested) |
 | `response["job_id"]` | → `response.data.job_id` (envelope) |
-| `response["results"]` | → `report.scan_results` (separate endpoint) |
-| `response["domain_info"]` | → `report.domain_results` |
+| `response["results"]` | → `get_scan_results(id).data.scan_results` (separate endpoint, 404 until complete) |
+| `response["domain_info"]` | → `report.domain_results` (DNS now under `.dns_info`) |
 | `for r in response["url_info"]` | → `for url, r in report.url_results.items()` |
+| `port["certificate"]` | → `port.certificates.certificate` (+ `chain`, `tls_version`) |
+| `port["ssh_collection"]` | → `port.collection["ssh"]` |
+| `port["checks"]` | → `report.checks_by_port()[(host, port)]` |
+| `http["requested_url"]` | → `http.url` |
+| `http["security_headers"]`, `http["other_headers"]` | → `http.headers`; `http.split_headers()` rebuilds the split |
+| `job["status"] == "running"` | → `job.is_running` (`"pending"` or `"in progress"`) |
 | `GET /scans?count=50` | → `list_scans(page=1, limit=50)` |
 | `POST /scans/repeat/{id}` | → `repeat_scan(id)` |
 | `GET /scans/{id}/subscribe` | → `wait_for_job(id)` or WebSocket |
@@ -54,6 +61,7 @@ for host, host_status in report.scan_results.items():
 
 ```python
 from efflux_v3.exceptions import (
+    EffluxJobRejectedError, # 400 — job rejected (bare RequestResults body; see .errors, .rejected)
     EffluxValidationError,  # 400
     EffluxAuthError,        # 401, 403
     EffluxNotFoundError,    # 404

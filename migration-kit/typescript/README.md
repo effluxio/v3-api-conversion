@@ -24,14 +24,15 @@ const response = await client.createScan({
 });
 const jobId = response.data.job_id;
 
-// Wait for completion
+// Wait until the job leaves "pending" / "in progress"
 const job = await client.waitForJob(jobId);
-console.log(`Done: ${job.status}`);
+if (job.status !== "complete") throw new Error(`Job ended ${job.status}`);   // canceled / rejected
 
-// Get results
-const report = await client.getScanResults(jobId);
-for (const [host, hostStatus] of Object.entries(report.scan_results)) {
-  for (const [port, result] of Object.entries(hostStatus.ports)) {
+// Get results — wrapped like every v3 resource, so take .data.
+// Empty maps are omitted by the server, hence the `?? {}`.
+const report = (await client.getScanResults(jobId)).data;
+for (const [host, hostStatus] of Object.entries(report.scan_results ?? {})) {
+  for (const [port, result] of Object.entries(hostStatus.ports ?? {})) {
     if (result.open) {
       console.log(`${host}:${port} — ${result.service}`);
     }
@@ -55,9 +56,15 @@ const client = new EffluxV3Client({ apiKey: "your-api-key" });
 | `checks_opts: {...}` | → `checks_options: {...}` (renamed, simplified) |
 | `callback.start_url` | → `callback.start.url` (nested object) |
 | `response.job_id` | → `response.data.job_id` (envelope) |
-| `response.results` | → `report.scan_results` (separate endpoint) |
-| `response.domain_info` | → `report.domain_results` |
-| `for (const r of response.url_info)` | → `Object.entries(report.url_results)` |
+| `response.results` | → `(await getScanResults(id)).data.scan_results` (separate endpoint, 404 until complete) |
+| `response.domain_info` | → `report.domain_results` (DNS now under `.dns_info`) |
+| `for (const r of response.url_info)` | → `Object.entries(report.url_results ?? {})` |
+| `port.certificate` | → `port.certificates?.certificate` (+ `chain`, `tls_version`) |
+| `port.ssh_collection` | → `port.collection?.ssh` |
+| `port.checks` | → `checksByPort(report).get(portKey(host, port))` |
+| `http.requested_url` | → `http.url` |
+| `http.security_headers`, `http.other_headers` | → `http.headers`; `splitHeaders(http)` rebuilds the split |
+| `job.status === "running"` | → `"pending"` or `"in progress"` (see `JOB_STATUS`) |
 | `GET /scans?count=50` | → `listScans(1, 50)` |
 | `POST /scans/repeat/{id}` | → `repeatScan(id)` |
 | `GET /scans/{id}/subscribe` | → `waitForJob(id)` or `streamJobEvents(id)` |
@@ -65,12 +72,20 @@ const client = new EffluxV3Client({ apiKey: "your-api-key" });
 ## Error Handling
 
 ```typescript
-import { EffluxValidationError, EffluxRateLimitError, EffluxAPIError } from "./src/index.js";
+import {
+  EffluxJobRejectedError,
+  EffluxValidationError,
+  EffluxRateLimitError,
+  EffluxAPIError,
+} from "./src/index.js";
 
 try {
   const response = await client.createScan(request);
 } catch (e) {
-  if (e instanceof EffluxValidationError) {
+  if (e instanceof EffluxJobRejectedError) {
+    // 400 with a bare RequestResults body (status "rejected"), not a Problem
+    console.log(e.errors, e.rejected);
+  } else if (e instanceof EffluxValidationError) {
     console.log(e.detail);     // human-readable
     console.log(e.fields);    // { field: message } object
   } else if (e instanceof EffluxRateLimitError) {

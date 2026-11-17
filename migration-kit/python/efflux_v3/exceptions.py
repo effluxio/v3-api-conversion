@@ -50,6 +50,12 @@ class EffluxAPIError(EffluxError):
     @classmethod
     def from_response(cls, status_code: int, body: dict) -> "EffluxAPIError":
         """Parse an RFC 7807 Problem Details response body."""
+        if not isinstance(body, dict):
+            body = {"detail": str(body)}
+        # POST /v3/scans answers a rejected job with 400 and a bare RequestResults
+        # body (status "rejected", errors as plain strings), not a Problem.
+        if status_code == 400 and body.get("status") == "rejected":
+            return EffluxJobRejectedError.from_body(body)
         detail = body.get("detail") or body.get("error") or "Unknown error"
         exc = cls(
             status_code=status_code,
@@ -115,6 +121,41 @@ class EffluxValidationError(EffluxAPIError):
     def fields(self) -> dict:
         """Returns a dict of field name → error message."""
         return {e["field"]: e["message"] for e in self.field_errors if "field" in e}
+
+
+class EffluxJobRejectedError(EffluxValidationError):
+    """
+    Raised when POST /v3/scans (or /repeat) rejects the job.
+
+    The server answers with HTTP 400 and a bare RequestResults body (not a
+    Problem, not wrapped in "data"). Inspect:
+        .errors          — list of reason strings
+        .rejected        — dict of rejected_hosts / rejected_ports / … lists
+        .request_results — the full raw body
+    """
+
+    def __init__(self, *args, errors: Optional[list] = None, rejected: Optional[dict] = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.errors = errors or []
+        self.rejected = rejected or {}
+
+    @property
+    def request_results(self) -> dict:
+        return self.raw_body or {}
+
+    @classmethod
+    def from_body(cls, body: dict) -> "EffluxJobRejectedError":
+        errors = [str(e) for e in body.get("errors") or []]
+        rejected = {k: v for k, v in body.items() if k.startswith("rejected_") and v}
+        detail = "job rejected" + (": " + "; ".join(errors) if errors else "")
+        return cls(
+            status_code=400,
+            detail=detail,
+            title="Job Rejected",
+            raw_body=body,
+            errors=errors,
+            rejected=rejected,
+        )
 
 
 class EffluxAuthError(EffluxAPIError):

@@ -4,6 +4,7 @@ Live integration tests for the Efflux v3 Python client.
 
 Requires:
     export EFFLUX_API_KEY=your-key
+    export EFFLUX_BASE_URL=https://...   # optional; defaults to https://api.efflux.io/v3
 
 Usage:
     python test_client.py
@@ -27,10 +28,17 @@ _PYTHON_CLIENT = os.path.normpath(os.path.join(_HERE, "..", "..", "migration-kit
 sys.path.insert(0, _PYTHON_CLIENT)
 
 from efflux_v3 import (  # noqa: E402
+    Certificate,
+    Certificates,
+    CheckResult,
+    DomainInfo,
     EffluxV3Client,
+    HostStatus,
     Job,
     JobReport,
     JobSummary,
+    ScanResult,
+    UrlResult,
     PagedResponse,
     DocumentResponse,
     RequestResults,
@@ -186,6 +194,58 @@ def assert_dataclass_instance(obj: Any, cls: type, label: str) -> None:
         getattr(obj, f.name)
 
 
+def unknown_keys(raw: Any, cls: type) -> list[str]:
+    """Keys present in the raw JSON object that the dataclass has no field for."""
+    if not isinstance(raw, dict):
+        return []
+    known = {f.name for f in fields(cls)}
+    return sorted(k for k in raw if k not in known)
+
+
+def report_drift(report: dict) -> list[str]:
+    """
+    Walk a raw JobReport and list keys the models don't know about.
+    Catches model drift such as the old UrlResult.requested_url /
+    security_headers fields, which the server never sends.
+    """
+    found: dict[str, set] = {}
+
+    def note(path: str, raw: Any, cls: type) -> None:
+        for k in unknown_keys(raw, cls):
+            found.setdefault(path, set()).add(k)
+
+    def url_result(path: str, raw: Any) -> None:
+        if not isinstance(raw, dict):
+            return
+        note(path, raw, UrlResult)
+        certs(f"{path}.certificates", raw.get("certificates"))
+
+    def certs(path: str, raw: Any) -> None:
+        if not isinstance(raw, dict):
+            return
+        note(path, raw, Certificates)
+        note(f"{path}.certificate", raw.get("certificate"), Certificate)
+
+    note("JobReport", report, JobReport)
+    for hs in (report.get("scan_results") or {}).values():
+        note("HostStatus", hs, HostStatus)
+        for c in hs.get("checks") or []:
+            note("HostStatus.checks[]", c, CheckResult)
+        for sr in (hs.get("ports") or {}).values():
+            note("ScanResult", sr, ScanResult)
+            url_result("ScanResult.http_info", sr.get("http_info"))
+            certs("ScanResult.certificates", sr.get("certificates"))
+    for di in (report.get("domain_results") or {}).values():
+        note("DomainInfo", di, DomainInfo)
+        url_result("DomainInfo.http_info", di.get("http_info"))
+        url_result("DomainInfo.https_info", di.get("https_info"))
+    for ur in (report.get("url_results") or {}).values():
+        url_result("url_results{}", ur)
+    for c in report.get("check_results") or []:
+        note("check_results[]", c, CheckResult)
+    return [f"{path}: {sorted(keys)}" for path, keys in sorted(found.items())]
+
+
 def created_at_key(item: Any) -> str:
     if isinstance(item, dict):
         return item.get("created_at") or item.get("updated_at") or ""
@@ -276,16 +336,23 @@ def test_scans(client: EffluxV3Client) -> None:
 
         if results_job_id:
             try:
-                report = client.get_scan_results(results_job_id)
-                assert_dataclass_instance(report, JobReport, "get_scan_results")
-                if report.job_id and report.job_id != results_job_id:
-                    raise AssertionError(f"JobReport.job_id mismatch: {report.job_id}")
+                doc = client.get_scan_results(results_job_id)
+                report = assert_document(doc)
+                assert_dataclass_instance(report, JobReport, "get_scan_results data")
+                # job_id is always present; an empty one means the envelope wasn't unwrapped.
+                if report.job_id != results_job_id:
+                    raise AssertionError(f"JobReport.job_id mismatch: {report.job_id!r} != {results_job_id!r}")
                 assert_type(report.scan_results, dict, "scan_results")
                 assert_type(report.domain_results, dict, "domain_results")
                 assert_type(report.url_results, dict, "url_results")
                 assert_type(report.check_results, list, "check_results")
+                for host, hs in report.scan_results.items():
+                    for port, sr in hs.ports.items():
+                        assert_type(sr, ScanResult, f"scan_results[{host}].ports[{port}]")
+                        if sr.http_info is not None:
+                            assert_type(sr.http_info, UrlResult, "ScanResult.http_info")
                 ok(
-                    "get_scan_results → JobReport",
+                    "get_scan_results → DocumentResponse[JobReport]",
                     f"hosts={len(report.scan_results)} domains={len(report.domain_results)} "
                     f"urls={len(report.url_results)} checks={len(report.check_results)}",
                 )
@@ -295,13 +362,29 @@ def test_scans(client: EffluxV3Client) -> None:
                 fail("get_scan_results", e)
 
             try:
-                summary = client.get_scan_summary(results_job_id)
-                assert_dataclass_instance(summary, JobSummary, "get_scan_summary")
+                raw = client._get(f"/scans/{results_job_id}/results", params={"details": "true"})
+                if "data" not in raw:
+                    raise AssertionError(f"results response not wrapped in data; keys={sorted(raw)}")
+                drift = report_drift(raw["data"])
+                if drift:
+                    raise AssertionError("server sent fields the models don't define: " + "; ".join(drift))
+                ok("get_scan_results raw JSON matches models", "no unknown keys")
+            except EffluxNotFoundError:
+                skip("get_scan_results schema check", "results not found")
+            except Exception as e:
+                fail("get_scan_results schema check", e)
+
+            try:
+                doc = client.get_scan_summary(results_job_id)
+                summary = assert_document(doc)
+                assert_dataclass_instance(summary, JobSummary, "get_scan_summary data")
+                if summary.job_id != results_job_id:
+                    raise AssertionError(f"JobSummary.job_id mismatch: {summary.job_id!r} != {results_job_id!r}")
                 assert_type(summary.ports, list, "summary.ports")
                 assert_type(summary.services, list, "summary.services")
                 assert_type(summary.hosts_per_country, dict, "summary.hosts_per_country")
                 ok(
-                    "get_scan_summary → JobSummary",
+                    "get_scan_summary → DocumentResponse[JobSummary]",
                     f"accessible_hosts={summary.accessible_host_count} ports={len(summary.ports)}",
                 )
             except EffluxNotFoundError:
@@ -857,8 +940,10 @@ def main() -> int:
     VERBOSE = args.verbose
 
     api_key = require_api_key()
+    base_url = os.environ.get("EFFLUX_BASE_URL", "").strip() or "https://api.efflux.io/v3"
     client = EffluxV3Client(
         api_key=api_key,
+        base_url=base_url,
         default_headers={
             "User-Agent": "Efflux-Online/1.0 (Web Client)",
             "X-Proxy-Source": "nextjs",

@@ -6,7 +6,14 @@
  * v3 code is the live implementation.
  */
 
-import { EffluxV3Client, EffluxValidationError, EffluxRateLimitError, EffluxNotFoundError } from "../client.js";
+import {
+  EffluxV3Client,
+  EffluxJobRejectedError,
+  EffluxValidationError,
+  EffluxRateLimitError,
+  EffluxNotFoundError,
+} from "../client.js";
+import { checksByPort, getHeader, portKey, splitHeaders } from "../helpers.js";
 import type { ScanRequest, Job, JobReport, ScanResult, CheckResult } from "../types.js";
 
 const API_KEY = process.env.EFFLUX_API_KEY ?? "your-api-key-here";
@@ -160,11 +167,13 @@ async function exampleGetJobStatus(jobId: string): Promise<void> {
   console.log(`  Accessible ports: ${job.accessible_port_count}`);
   console.log(`  Checks matched: ${job.checks_matched}`);
 
-  const running = ["pending", "running"].includes(job.status);
-  const terminal = ["complete", "failed", "canceled"].includes(job.status);
+  // Status values: "pending", "in progress" (note the space), "complete",
+  // "canceled", "rejected". There is no "running" or "failed".
+  const running = job.status === "pending" || job.status === "in progress";
 
   if (running) console.log("  Still running...");
-  if (terminal) console.log("  Done!");
+  else if (job.status === "complete") console.log("  Done!");
+  else console.log(`  Ended without results: ${job.status}`);
 }
 
 // =============================================================================
@@ -198,45 +207,101 @@ async function exampleGetResults(jobId: string): Promise<void> {
    * const portChecks = result.results[host].ports[port].checks;
    */
 
-  // v3: separate results endpoint
-  const report: JobReport = await client.getScanResults(jobId);
+  // v3: separate results endpoint. 404 until the job is "complete".
+  // Like every v3 resource, the report is wrapped: take .data.
+  const report: JobReport = (await client.getScanResults(jobId)).data;
 
-  // scan_results replaces "results"
-  for (const [host, hostStatus] of Object.entries(report.scan_results)) {
+  // scan_results replaces "results". Empty maps/arrays are omitted, so default them.
+  for (const [host, hostStatus] of Object.entries(report.scan_results ?? {})) {
     if (hostStatus.metadata) {
       console.log(`\nHost ${host} (${hostStatus.metadata.country}, ASN: ${hostStatus.metadata.asn})`);
     }
 
-    for (const [portStr, scanResult] of Object.entries(hostStatus.ports)) {
+    for (const [portStr, scanResult] of Object.entries(hostStatus.ports ?? {})) {
       if (scanResult.open) {
-        console.log(`  ${portStr}/tcp: ${scanResult.service} ${scanResult.software} ${scanResult.version}`);
-        if (scanResult.tls) console.log(`    TLS: yes`);
-        if (scanResult.http_info) {
-          console.log(`    HTTP status: ${scanResult.http_info.status_code}`);
-        }
+        console.log(`  ${portStr}/${scanResult.proto ?? "tcp"}: ${scanResult.service} ${scanResult.software ?? ""} ${scanResult.version ?? ""}`);
       }
     }
   }
 
-  // domain_results replaces "domain_info"
-  for (const [domain, domainInfo] of Object.entries(report.domain_results)) {
+  // domain_results replaces "domain_info". DNS moved under dns_info.
+  for (const [domain, domainInfo] of Object.entries(report.domain_results ?? {})) {
     console.log(`\nDomain ${domain}:`);
-    if (domainInfo.a.length > 0) console.log(`  A: ${domainInfo.a}`);
-    if (domainInfo.mx.length > 0) console.log(`  MX: ${domainInfo.mx}`);
+    const dns = domainInfo.dns_info;
+    if (dns?.a?.length) console.log(`  A: ${dns.a}`);
+    if (dns?.mx?.length) console.log(`  MX: ${dns.mx}`);
+    if (domainInfo.https_info) console.log(`  HTTPS: ${domainInfo.https_info.url}`);
   }
 
-  // url_results replaces "url_info" — now a dict (not an array!)
-  for (const [url, urlResult] of Object.entries(report.url_results)) {
-    // iterate Object.entries, not an array
-    console.log(`\nURL ${url}: status ${urlResult.status_code}`);
+  // url_results replaces "url_info" — now a map keyed by URL (not an array!)
+  for (const [url, urlResult] of Object.entries(report.url_results ?? {})) {
+    console.log(`\nURL ${url}: remote ${urlResult.remote_host}:${urlResult.remote_port}`);
   }
 
-  // check_results — new in v3: top-level array with context
-  for (const check of report.check_results) {
+  // check_results — new in v3: checks are no longer attached to ports
+  for (const check of report.check_results ?? []) {
     console.log(`\nCheck: [${check.severity}] ${check.check_name}`);
     console.log(`  Host: ${check.host}:${check.port}`);   // context fields — new in v3
-    console.log(`  CVEs: ${check.cve_id.join(", ")}`);
-    console.log(`  CVSS: ${check.cvss_score}`);
+    console.log(`  CVEs: ${(check.cve_id ?? []).join(", ")}`);
+    console.log(`  CVSS: ${check.cvss_score ?? 0}`);
+  }
+}
+
+// =============================================================================
+// 5b. ONE PORT IN DETAIL: PortStatus → ScanResult, HTTPResult → UrlResult
+// =============================================================================
+
+async function examplePortDetail(jobId: string, host: string, port = "443"): Promise<void> {
+  /**
+   * v2:
+   * const ps = result.results[host].ports[port];            // PortStatus
+   * ps.certificate.subject_common_name;                      // flat TLSCertificate
+   * ps.ssh_collection.pub_key;                               // one field per protocol
+   * ps.app_detections[0].detections[0].version;              // grouped by URL
+   * ps.checks;                                               // checks on the port
+   * const http = ps.http_info;                               // HTTPResult
+   * http.requested_url; http.security_headers; http.other_headers;
+   */
+
+  const report = (await client.getScanResults(jobId)).data;
+  const sr: ScanResult | undefined = report.scan_results?.[host]?.ports?.[port];
+  if (!sr) return;
+  console.log(`${sr.host}:${sr.port}/${sr.proto} checked ${sr.checked_at} open=${sr.open ?? false}`);
+
+  // certificate → certificates { certificate, chain, chain_valid, ocsp_staple, tls_version }
+  const leaf = sr.certificates?.certificate;
+  if (leaf) {
+    console.log(`  cert subject=${leaf.subject} issuer=${leaf.issuer}`);   // one string each now
+    console.log(`  not_after=${leaf.not_after} (number)  chain_valid=${sr.certificates?.chain_valid ?? false}`);
+    console.log(`  TLS version: ${sr.certificates?.tls_version}`);
+  }
+
+  // ssh_collection etc. → collection.ssh etc. (SSH fields renamed: pub_key → host_key)
+  const ssh = sr.collection?.ssh;
+  if (ssh) console.log(`  SSH host key: ${ssh.host_key_type} ${ssh.host_key_fingerprint}`);
+
+  // app_detections → detections (flat; name/info/cpe/website/categories, no version)
+  for (const det of sr.detections ?? []) console.log(`  detected: ${det.name} ${det.cpe ?? ""}`);
+
+  // checks are no longer on the port — rebuild the per-port list
+  for (const check of checksByPort(report).get(portKey(host, port)) ?? []) {
+    console.log(`  check: [${check.severity}] ${check.check_name}`);
+  }
+
+  // http_info: HTTPResult → UrlResult
+  const http = sr.http_info;
+  if (http) {
+    console.log(`  URL: ${http.url} (was requested_url) scheme=${http.url_scheme} path=${http.url_path}`);
+    const [security] = splitHeaders(http);               // v2 security_headers / other_headers
+    console.log(`  security headers: ${security.map((h) => h.name).join(", ")}`);
+    console.log(`  HSTS: ${getHeader(http, "strict-transport-security").join(", ")}`);
+    for (const hop of http.redirect_chain ?? []) {        // status codes live on the hops
+      console.log(`  redirect ${hop.status_code} → ${hop.location} via ${hop.remote_host}:${hop.remote_port}`);
+    }
+    for (const cookie of http.cookies ?? []) {            // new
+      console.log(`  cookie ${cookie.name} secure=${cookie.secure ?? false} http_only=${cookie.http_only ?? false}`);
+    }
+    if (http.favicon_mmh3) console.log(`  favicon mmh3: ${http.favicon_mmh3}`);   // new
   }
 }
 
@@ -249,16 +314,17 @@ async function exampleGetSummary(jobId: string): Promise<void> {
    * New in v3 — no equivalent in v2.
    * Use instead of getScanResults() when you only need statistics.
    */
-  const summary = await client.getScanSummary(jobId);
+  const summary = (await client.getScanSummary(jobId)).data;   // wrapped like every v3 resource
 
   console.log(`Summary for ${summary.job_id}:`);
   console.log(`  Accessible hosts: ${summary.accessible_host_count}`);
   console.log(`  Accessible ports: ${summary.accessible_port_count}`);
-  console.log(`  Checks matched: ${summary.checks_matched}`);
-  console.log(`  Open ports: ${summary.ports.join(", ")}`);
-  console.log(`  Services: ${summary.services.join(", ")}`);
-  console.log(`  ASNs: ${summary.asns.join(", ")}`);
-  console.log(`  Countries:`, summary.hosts_per_country);
+  console.log(`  Checks matched: ${summary.checks_matched ?? 0}`);
+  console.log(`  Open ports: ${(summary.ports ?? []).join(", ")}`);
+  console.log(`  Services: ${(summary.services ?? []).join(", ")}`);
+  console.log(`  Cert fingerprints: ${(summary.certs ?? []).join(", ")}`);
+  console.log(`  ASNs: ${(summary.asns ?? []).join(", ")}`);
+  console.log(`  Countries:`, summary.hosts_per_country ?? {});
 }
 
 // =============================================================================
@@ -299,8 +365,8 @@ async function exampleListJobs(): Promise<void> {
 
 async function exampleRepeatJob(jobId: string): Promise<string> {
   /**
-   * v2: POST /scans/repeat/{job_id}   HTTP 200
-   * v3: POST /scans/{job_id}/repeat   HTTP 201 (path changed)
+   * v2: POST /scans/repeat/{job_id}
+   * v3: POST /scans/{job_id}/repeat   (path changed; HTTP 200, although the spec says 201)
    */
 
   const response = await client.repeatScan(jobId);
@@ -323,14 +389,18 @@ async function examplePolling(jobId: string): Promise<void> {
 
   // Option A: Simple polling
   const job = await client.waitForJob(jobId, 5_000, 3_600_000);
-  console.log(`Job complete: ${job.status}`);
+  console.log(`Job finished: ${job.status}`);   // complete, canceled, or rejected
 
-  // Option B: Submit and wait in one call
-  const { job: completedJob, report } = await client.runScanAndWait({
+  // Option B: Submit and wait in one call (report is null unless the job completed)
+  const { job: finishedJob, report } = await client.runScanAndWait({
     hosts: ["192.168.1.0/24"],
     ports: ["22", "80", "443"],
   });
-  console.log(`Found ${report.accessible_host_count} hosts with ${report.accessible_port_count} open ports`);
+  if (report) {
+    console.log(`Found ${report.accessible_host_count} hosts with ${report.accessible_port_count} open ports`);
+  } else {
+    console.log(`Job ended ${finishedJob.status}`);
+  }
 
   // Option C: WebSocket stream for live results
   // Requires browser WebSocket or `ws` npm package
@@ -339,12 +409,13 @@ async function examplePolling(jobId: string): Promise<void> {
       if (event.type === "connected") {
         console.log("Stream connected for job:", event.job_id);
       } else if (event.type === "scan") {
-        const result = event.data as ScanResult;
-        if (result.open) {
+        // data is ScanResultExtended — the port result is in data.status
+        const result = event.data.status;
+        if (result?.open) {
           console.log(`Live: ${result.host}:${result.port} open — ${result.service}`);
         }
       } else if (event.type === "check") {
-        const check = event.data as CheckResult;
+        const check: CheckResult = event.data;
         console.log(`Live check: [${check.severity}] ${check.check_name} on ${check.host}`);
       }
     }
@@ -377,7 +448,12 @@ async function exampleErrorHandling(): Promise<void> {
   try {
     await client.createScan({ hosts: ["not-valid!!!"], ports: [] });
   } catch (e) {
-    if (e instanceof EffluxValidationError) {
+    if (e instanceof EffluxJobRejectedError) {
+      // 400 with a bare RequestResults body (status "rejected"), not a Problem.
+      // Check it before EffluxValidationError, which it extends.
+      console.log(`Job rejected: ${e.errors.join("; ")}`);
+      console.log("  Rejected inputs:", e.rejected);
+    } else if (e instanceof EffluxValidationError) {
       // 400 — read .detail (not .error like v2)
       console.log(`Validation failed: ${e.detail}`);
       // Per-field errors
@@ -435,7 +511,7 @@ async function exampleChecksQuery(): Promise<void> {
   console.log(`Found ${response.pagination.total} critical checks`);
   for (const check of response.data) {
     console.log(`  [${check.severity}] ${check.check_name} — ${check.host}:${check.port}`);
-    if (check.cve_id.length > 0) {
+    if (check.cve_id?.length) {
       console.log(`    CVEs: ${check.cve_id.join(", ")}`);
     }
   }
@@ -469,15 +545,16 @@ async function exampleWebSocketStream(jobId: string): Promise<void> {
         console.log(`Streaming job ${msg.job_id}`);
         break;
       case "scan":
-        if (msg.data.open) {
-          console.log(`${msg.data.host}:${msg.data.port} open — ${msg.data.service}`);
+        // data is ScanResultExtended; the port result is data.status
+        if (msg.data.status?.open) {
+          console.log(`${msg.data.host}:${msg.data.port} open — ${msg.data.status.service}`);
         }
         break;
       case "dns":
         console.log(`DNS: ${JSON.stringify(msg.data)}`);
         break;
       case "url":
-        console.log(`URL: ${msg.data.requested_url} ${msg.data.status_code}`);
+        console.log(`URL: ${msg.data.url} (was requested_url)`);
         break;
       case "check":
         console.log(`Check: [${msg.data.severity}] ${msg.data.check_name}`);
@@ -489,9 +566,9 @@ async function exampleWebSocketStream(jobId: string): Promise<void> {
 
   // Async generator alternative (cleaner)
   for await (const event of client.streamJobEvents(jobId)) {
-    if (event.type === "scan" && (event.data as ScanResult).open) {
-      const r = event.data as ScanResult;
-      console.log(`${r.host}:${r.port} — ${r.service} ${r.version}`);
+    if (event.type === "scan" && event.data.status?.open) {
+      const r = event.data.status;
+      console.log(`${r.host}:${r.port} — ${r.service} ${r.version ?? ""}`);
     }
   }
 }
@@ -517,6 +594,7 @@ async function main(): Promise<void> {
   try {
     const job = await client.waitForJob(jobId, 10_000, 300_000);
     console.log(`Job finished: ${job.status}`);
+    if (job.status !== "complete") throw new Error(`job ended ${job.status}; no results to fetch`);
 
     console.log("\n=== Full results ===");
     await exampleGetResults(jobId);

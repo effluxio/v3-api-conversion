@@ -17,11 +17,12 @@
  *   });
  *   const jobId = response.data.job_id;
  *
- *   const job = await client.waitForJob(jobId);
- *   const results = await client.getScanResults(jobId);
+ *   const job = await client.waitForJob(jobId);   // until not pending / in progress
+ *   if (job.status !== "complete") throw new Error(`job ${job.status}`);
+ *   const report = (await client.getScanResults(jobId)).data;
  *
- *   for (const [host, hostStatus] of Object.entries(results.scan_results)) {
- *     for (const [port, scanResult] of Object.entries(hostStatus.ports)) {
+ *   for (const [host, hostStatus] of Object.entries(report.scan_results ?? {})) {
+ *     for (const [port, scanResult] of Object.entries(hostStatus.ports ?? {})) {
  *       if (scanResult.open) {
  *         console.log(`${host}:${port} — ${scanResult.service}`);
  *       }
@@ -47,6 +48,7 @@ import type {
   PortList,
   WSMessage,
 } from "./types.js";
+import { JOB_STATUS } from "./types.js";
 
 export const BASE_URL = "https://api.efflux.io/v3";
 
@@ -90,6 +92,42 @@ export class EffluxValidationError extends EffluxAPIError {
   constructor(body: Record<string, unknown>) {
     super(400, body);
     this.name = "EffluxValidationError";
+  }
+}
+
+/**
+ * Thrown when POST /v3/scans (or /repeat) rejects the job.
+ *
+ * The server answers with HTTP 400 and a bare RequestResults body (status
+ * "rejected", errors as plain strings) — not a Problem, not wrapped in data.
+ */
+export class EffluxJobRejectedError extends EffluxValidationError {
+  /** Reason strings from the rejected RequestResults. */
+  public readonly errors: string[];
+  /** rejected_hosts / rejected_ports / … lists that were non-empty. */
+  public readonly rejected: Record<string, string[]>;
+
+  constructor(body: Record<string, unknown>) {
+    const errors = Array.isArray(body.errors) ? (body.errors as unknown[]).map(String) : [];
+    super({
+      ...body,
+      detail: "job rejected" + (errors.length ? `: ${errors.join("; ")}` : ""),
+      title: "Job Rejected",
+      errors: [],
+    });
+    this.name = "EffluxJobRejectedError";
+    this.errors = errors;
+    this.rejected = Object.fromEntries(
+      Object.entries(body).filter(
+        ([k, v]) => k.startsWith("rejected_") && Array.isArray(v) && v.length > 0,
+      ),
+    ) as Record<string, string[]>;
+    (this as { rawBody: unknown }).rawBody = body;
+  }
+
+  /** The full RequestResults body the server returned. */
+  get requestResults(): RequestResults {
+    return this.rawBody as RequestResults;
   }
 }
 
@@ -223,6 +261,9 @@ export class EffluxV3Client {
     if (!response.ok) {
       switch (response.status) {
         case 400:
+          if (responseBody.status === "rejected") {
+            throw new EffluxJobRejectedError(responseBody);
+          }
           throw new EffluxValidationError(responseBody);
         case 401:
         case 403:
@@ -269,6 +310,13 @@ export class EffluxV3Client {
    * - checks_options replaces checks_opts
    * - callback uses nested {start, success, fail} format
    * - response is wrapped in DocumentResponse (access .data)
+   *
+   * The server ignores unknown fields: leftover v2 keys (checks_opts, flat
+   * callback fields) are silently dropped, not rejected.
+   *
+   * @throws EffluxJobRejectedError 400 — job rejected (see .errors, .rejected)
+   * @throws EffluxValidationError  400 — invalid body or options
+   * @throws EffluxAPIError         409 — the same job is already pending or in progress
    */
   async createScan(request: ScanRequest): Promise<DocumentResponse<RequestResults>> {
     return this.post<DocumentResponse<RequestResults>>("/scans", request);
@@ -298,27 +346,38 @@ export class EffluxV3Client {
   /**
    * GET /v3/scans/{job_id}/results — Get the full scan results.
    *
-   * Returns JobReport directly (NOT wrapped in DocumentResponse).
+   * Returns DocumentResponse<JobReport>; the report is response.data.
+   * (The server wraps it in { data, links } like every other resource.)
    *
    * v2 → v3 field renames in JobReport:
-   *   results     → scan_results   (same map structure)
-   *   domain_info → domain_results (same map structure)
+   *   results     → scan_results   (same host → ports map shape)
+   *   domain_info → domain_results (values are now DomainInfo)
    *   url_info    → url_results    (was array!, now Record<url, UrlResult>)
    *
    * New: check_results — top-level array of all check matches
+   *
+   * @param jobId - Job ID, or "last" for your most recent job.
+   * @param details - Keep the request echo arrays (hosts, ports, domains, urls,
+   *   cves, host_lists, port_lists) and UrlResult.raw, which are stripped by default.
+   * @throws EffluxNotFoundError 404 — job not found OR not complete yet.
    */
-  async getScanResults(jobId: string, details = false): Promise<JobReport> {
-    return this.get<JobReport>(`/scans/${jobId}/results`, details ? { details: "true" } : undefined);
+  async getScanResults(jobId: string, details = false): Promise<DocumentResponse<JobReport>> {
+    return this.get<DocumentResponse<JobReport>>(
+      `/scans/${jobId}/results`,
+      details ? { details: "true" } : undefined,
+    );
   }
 
   /**
    * GET /v3/scans/{job_id}/summary — Get aggregated scan statistics.
    *
-   * New in v3. Returns lightweight stats without full result payload.
+   * New in v3. Returns DocumentResponse<JobSummary>; the summary is response.data.
    * Use instead of getScanResults() when you only need counts and lists.
+   *
+   * @throws EffluxNotFoundError 404 — job not found OR not complete yet.
    */
-  async getScanSummary(jobId: string): Promise<JobSummary> {
-    return this.get<JobSummary>(`/scans/${jobId}/summary`);
+  async getScanSummary(jobId: string): Promise<DocumentResponse<JobSummary>> {
+    return this.get<DocumentResponse<JobSummary>>(`/scans/${jobId}/summary`);
   }
 
   /**
@@ -355,26 +414,27 @@ export class EffluxV3Client {
    * v2 path: POST /scans/repeat/{job_id}
    * v3 path: POST /scans/{job_id}/repeat  ← path changed
    *
-   * Returns HTTP 201 + DocumentResponse<RequestResults>.
+   * Returns DocumentResponse<RequestResults> (HTTP 200; the spec says 201).
+   * @throws EffluxJobRejectedError if the repeated job is rejected.
    */
   async repeatScan(jobId: string): Promise<DocumentResponse<RequestResults>> {
     return this.post<DocumentResponse<RequestResults>>(`/scans/${jobId}/repeat`);
   }
 
   /**
-   * POST /v3/scans/{job_id}/callback — Update callback config after job creation.
-   * New in v3.
+   * POST /v3/scans/{job_id}/callback — Replace callback config after job creation.
+   * New in v3. Body is a CallbackRequest; response.data is the updated Callback.
    */
-  async updateScanCallback(jobId: string, callback: CallbackRequest): Promise<Callback> {
-    return this.post<Callback>(`/scans/${jobId}/callback`, callback);
+  async updateScanCallback(jobId: string, callback: CallbackRequest): Promise<DocumentResponse<Callback>> {
+    return this.post<DocumentResponse<Callback>>(`/scans/${jobId}/callback`, callback);
   }
 
   /**
-   * PUT /v3/scans/{job_id}/callback/restart — Retry callback deliveries.
-   * New in v3.
+   * PUT /v3/scans/{job_id}/callback/restart — Re-trigger callback deliveries.
+   * New in v3. response.data is the updated Callback.
    */
-  async restartScanCallback(jobId: string): Promise<Callback> {
-    return this.put<Callback>(`/scans/${jobId}/callback/restart`);
+  async restartScanCallback(jobId: string): Promise<DocumentResponse<Callback>> {
+    return this.put<DocumentResponse<Callback>>(`/scans/${jobId}/callback/restart`);
   }
 
   // -------------------------------------------------------------------------
@@ -382,9 +442,11 @@ export class EffluxV3Client {
   // -------------------------------------------------------------------------
 
   /**
-   * Poll GET /v3/scans/{job_id} until the job reaches a terminal state.
+   * Poll GET /v3/scans/{job_id} until the job leaves "pending" / "in progress".
    *
-   * Replaces the v2 /subscribe long-poll endpoint.
+   * Replaces the v2 /subscribe long-poll endpoint. Returns the finished Job
+   * ("complete", "canceled", or "rejected"); check job.status before calling
+   * getScanResults(), which returns 404 unless the job is "complete".
    *
    * @param pollIntervalMs - Milliseconds between status checks (default 5000).
    * @param timeoutMs - Maximum milliseconds to wait (default 3_600_000 = 1 hour).
@@ -400,8 +462,7 @@ export class EffluxV3Client {
       const response = await this.getScan(jobId);
       const job = response.data;
 
-      const terminal = ["complete", "failed", "canceled"];
-      if (terminal.includes(job.status)) {
+      if (job.status !== JOB_STATUS.PENDING && job.status !== JOB_STATUS.IN_PROGRESS) {
         return job;
       }
 
@@ -414,19 +475,21 @@ export class EffluxV3Client {
   }
 
   /**
-   * Create a scan job and wait for completion, then return both job and results.
+   * Create a scan job and wait for it to finish, then return the job and its report.
+   * The report is unwrapped for convenience; it is null if the job ended
+   * "canceled" or "rejected".
    *
    * Usage:
    *   const { job, report } = await client.runScanAndWait({
    *     hosts: ["10.0.0.0/24"],
    *     ports: ["top_100"],
    *   });
-   *   console.log(`Found ${report.accessible_host_count} hosts`);
+   *   if (report) console.log(`Found ${report.accessible_host_count} hosts`);
    */
   async runScanAndWait(
     request: ScanRequest,
     options?: { pollIntervalMs?: number; timeoutMs?: number },
-  ): Promise<{ job: Job; report: JobReport }> {
+  ): Promise<{ job: Job; report: JobReport | null }> {
     const createResponse = await this.createScan(request);
     const jobId = createResponse.data.job_id;
     const job = await this.waitForJob(
@@ -434,7 +497,10 @@ export class EffluxV3Client {
       options?.pollIntervalMs,
       options?.timeoutMs,
     );
-    const report = await this.getScanResults(jobId);
+    if (job.status !== JOB_STATUS.COMPLETE) {
+      return { job, report: null };
+    }
+    const report = (await this.getScanResults(jobId)).data;
     return { job, report };
   }
 
@@ -455,7 +521,8 @@ export class EffluxV3Client {
    *   ws.onmessage = (event) => {
    *     const msg: WSMessage = JSON.parse(event.data);
    *     if (msg.type === "scan") {
-   *       console.log("Port result:", msg.data);
+   *       // data is ScanResultExtended — the port result is in data.status
+   *       console.log("Port result:", msg.data.status);
    *     }
    *   };
    *   ws.onclose = () => console.log("Stream closed");
@@ -499,8 +566,8 @@ export class EffluxV3Client {
    * Usage (Node.js with ws package installed):
    *   for await (const event of client.streamJobEvents(jobId)) {
    *     if (event.type === "scan") {
-   *       const result = event.data as ScanResult;
-   *       console.log(`${result.host}:${result.port} open=${result.open}`);
+   *       const result = event.data.status;   // ScanResultExtended.status → ScanResult
+   *       console.log(`${result?.host}:${result?.port} open=${result?.open}`);
    *     }
    *   }
    */
